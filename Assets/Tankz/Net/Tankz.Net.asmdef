@@ -1,0 +1,16 @@
+{
+    "name": "Tankz.Net",
+    "rootNamespace": "Tankz.Net",
+    "references": [
+        "Tankz.Sim"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
