@@ -204,5 +204,71 @@ namespace Tanks.Tests
             Assert.That(s.Bullets[0].Active, Is.False, "shell should detonate after its second surface contact");
             Assert.That(bounceCount, Is.EqualTo(1), "shell should bounce exactly once before detonating");
         }
+
+        [Test]
+        public void DashWithNoMovementInputDoesNothing()
+        {
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+            Fixed startX = s.Tanks[0].X;
+            Fixed startY = s.Tanks[0].Y;
+
+            // Dash bit set, no direction bits.
+            var dashOnly = new PlayerInput(InputButtons.Dash);
+            for (int i = 0; i < 5; i++)
+                Simulation.Tick(s, arena, Both(dashOnly, PlayerInput.None));
+
+            Assert.That(s.Tanks[0].X, Is.EqualTo(startX), "no direction input => no movement");
+            Assert.That(s.Tanks[0].Y, Is.EqualTo(startY), "no direction input => no movement");
+            Assert.That(s.Tanks[0].DashTicks, Is.EqualTo(0), "dash should not have started");
+            Assert.That(s.Tanks[0].DashCooldown, Is.EqualTo(0), "cooldown should not have been set");
+        }
+
+        [Test]
+        public void DashMultipliesDisplacementWhileActive()
+        {
+            var arena = Arena.CreateDefault();
+
+            // Baseline: hold Right for DashDurationTicks ticks (no dash bit).
+            var sBaseline = GameState.CreateInitial();
+            var rightOnly = new PlayerInput(InputButtons.Right);
+            for (int i = 0; i < SimConfig.DashDurationTicks; i++)
+                Simulation.Tick(sBaseline, arena, Both(rightOnly, PlayerInput.None));
+            Fixed baseDx = sBaseline.Tanks[0].X - Fixed.FromInt(3);
+
+            // With dash: tick 0 carries Dash+Right (the rising edge triggers); remaining ticks
+            // carry Right only (so the dash stays active for its full duration but isn't
+            // retriggered — same as what the sampler's edge detection would produce live).
+            var sDash = GameState.CreateInitial();
+            var dashAndRight = new PlayerInput(InputButtons.Right | InputButtons.Dash);
+            Simulation.Tick(sDash, arena, Both(dashAndRight, PlayerInput.None));
+            for (int i = 1; i < SimConfig.DashDurationTicks; i++)
+                Simulation.Tick(sDash, arena, Both(rightOnly, PlayerInput.None));
+            Fixed dashDx = sDash.Tanks[0].X - Fixed.FromInt(3);
+
+            float ratio = dashDx.ToFloat() / baseDx.ToFloat();
+            Assert.That(ratio, Is.EqualTo((float)SimConfig.DashSpeedMultiplier).Within(0.02f),
+                $"dash should multiply displacement by ~{SimConfig.DashSpeedMultiplier}x");
+        }
+
+        [Test]
+        public void DashSecondTriggerWithinCooldownIsIgnored()
+        {
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+            var dashAndRight = new PlayerInput(InputButtons.Right | InputButtons.Dash);
+
+            // First tick: dash triggers and sets the full cooldown.
+            Simulation.Tick(s, arena, Both(dashAndRight, PlayerInput.None));
+            Assert.That(s.Tanks[0].DashTicks, Is.GreaterThan(0), "first dash should start");
+            Assert.That(s.Tanks[0].DashCooldown, Is.EqualTo(SimConfig.DashCooldownTicks));
+
+            // Second tick keeps asserting Dash (bypassing the sampler's edge detection). The
+            // sim's cooldown gate must reject the retrigger: cooldown should keep decrementing
+            // rather than resetting back to the full DashCooldownTicks value.
+            Simulation.Tick(s, arena, Both(dashAndRight, PlayerInput.None));
+            Assert.That(s.Tanks[0].DashCooldown, Is.LessThan(SimConfig.DashCooldownTicks),
+                "second dash within cooldown should be ignored");
+        }
     }
 }

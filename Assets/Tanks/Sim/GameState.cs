@@ -6,10 +6,12 @@ namespace Tanks.Sim
     {
         public Fixed X;
         public Fixed Y;
-        public int Angle;        // body facing (movement direction)
-        public int TurretAngle;  // turret facing (fire direction); set absolute from PlayerInput each tick
+        public int Angle;         // body facing (movement direction)
+        public int TurretAngle;   // turret facing (fire direction); set absolute from PlayerInput each tick
         public int Health;
-        public int FireCooldown; // ticks until allowed to fire again
+        public int FireCooldown;  // ticks until allowed to fire again
+        public int DashTicks;     // remaining ticks of the speed burst (>0 = currently dashing)
+        public int DashCooldown;  // ticks until allowed to dash again
 
         public readonly bool Alive => Health > 0;
     }
@@ -61,6 +63,8 @@ namespace Tanks.Sim
                     TurretAngle = angle,   // turret starts aligned with body facing
                     Health = SimConfig.TankMaxHealth,
                     FireCooldown = 0,
+                    DashTicks = 0,
+                    DashCooldown = 0,
                 };
             }
             return s;
@@ -115,6 +119,8 @@ namespace Tanks.Sim
                 h = Mix(h, t.TurretAngle);
                 h = Mix(h, t.Health);
                 h = Mix(h, t.FireCooldown);
+                h = Mix(h, t.DashTicks);
+                h = Mix(h, t.DashCooldown);
             }
             for (int i = 0; i < Bullets.Length; i++)
             {

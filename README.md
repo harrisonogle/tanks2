@@ -45,13 +45,13 @@ Movement is 8-way in world space (faithful to original *Tanks* — not tank-cont
 The body visually rotates to face the input direction; the turret aims independently.
 
 **Gamepad** (Xbox or PlayStation, auto-detected when connected): left stick to drive,
-right stick to aim the turret, A/Cross or right trigger to fire. P1 binds to the first
-connected gamepad, P2 to the second.
+right stick to aim the turret, A/Cross or right trigger to fire, **left trigger to dash**.
+P1 binds to the first connected gamepad, P2 to the second.
 
 **Keyboard** (fallback for whichever slot has no gamepad):
 
-- **P1 (blue):** `W`/`A`/`S`/`D` move (8 directions), `Q`/`E` rotate turret, `Space` fire
-- **P2 (red):** Arrow keys move (8 directions), `,` / `.` rotate turret, `Enter` fire
+- **P1 (blue):** `W`/`A`/`S`/`D` move (8 directions), `Q`/`E` rotate turret, `Space` fire, `LShift` dash
+- **P2 (red):** Arrow keys move (8 directions), `,` / `.` rotate turret, `Enter` fire, `RShift` dash
 
 **`R`** (keyboard) or **Start / Options** (gamepad): reset the match
 

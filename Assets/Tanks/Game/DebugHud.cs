@@ -22,7 +22,7 @@ namespace Tanks.Game
             var state = _runner != null ? _runner.State : null;
             if (state == null) return;
 
-            GUILayout.BeginArea(new Rect(10, 10, 360, 300), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(10, 10, 440, 320), GUI.skin.box);
 
             GUILayout.Label("TANKS - local sandbox (no netcode yet)");
             GUILayout.Space(4);
@@ -33,10 +33,14 @@ namespace Tanks.Game
             GUILayout.Space(4);
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
-                bool alive = state.Tanks[i].Alive;
-                int bodyDeg = (state.Tanks[i].Angle * 360) / Trig.AngleCount;
-                int turretDeg = (state.Tanks[i].TurretAngle * 360) / Trig.AngleCount;
-                GUILayout.Label($"P{i + 1}: {(alive ? "alive" : "DEAD ")}  body={bodyDeg,4}°  turret={turretDeg,4}°  in={_runner.InputOf(i).Buttons}");
+                ref readonly Tank t = ref state.Tanks[i];
+                int bodyDeg = (t.Angle * 360) / Trig.AngleCount;
+                int turretDeg = (t.TurretAngle * 360) / Trig.AngleCount;
+                string dash =
+                    t.DashTicks > 0 ? "ACTIVE" :
+                    t.DashCooldown > 0 ? $"cd {t.DashCooldown / (float)SimConfig.TickRate:0.0}s" :
+                    "ready";
+                GUILayout.Label($"P{i + 1}: {(t.Alive ? "alive" : "DEAD ")}  body={bodyDeg,4}°  turret={turretDeg,4}°  dash={dash,-7}");
             }
 
             int aliveCount = state.CountAlive();
@@ -48,8 +52,8 @@ namespace Tanks.Game
             }
 
             GUILayout.Space(8);
-            GUILayout.Label("P1 (blue): W/A/S/D move (8-way), Q/E rotate turret, Space fire");
-            GUILayout.Label("P2 (red):  Arrows move (8-way), , / . rotate turret, Enter fire");
+            GUILayout.Label("P1 (blue): WASD move, Q/E turret, Space fire, LShift dash");
+            GUILayout.Label("P2 (red):  Arrows move, , / . turret, Enter fire, RShift dash");
             GUILayout.Label("R (keyboard) or Start/Options (gamepad): reset match");
 
             GUILayout.Space(8);

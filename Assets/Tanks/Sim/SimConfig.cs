@@ -23,6 +23,11 @@ namespace Tanks.Sim
         public const int KeyboardTurretTurnSpeed = 24;                       // angle units per tick (~253 deg/s); used by the keyboard turret-aim fallback
         public const int TankMaxHealth = 1;                                  // one-shot kill, classic Tanks
 
+        // Dash
+        public const int DashDurationTicks = 6;                              // length of the speed burst when you trigger a dash (~100 ms at 60 Hz)
+        public const int DashCooldownTicks = 60;                             // minimum ticks between dashes (1 second)
+        public const int DashSpeedMultiplier = 3;                            // movement speed factor while DashTicks > 0
+
         // Bullet
         public static readonly Fixed BulletSpeed = Fixed.FromFloat(0.28f);   // units per tick (~16.8 u/s)
         public static readonly Fixed BulletRadius = Fixed.FromFloat(0.12f);

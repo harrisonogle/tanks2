@@ -25,6 +25,8 @@ namespace Tanks.Sim
             {
                 ref Tank t = ref state.Tanks[i];
                 if (t.FireCooldown > 0) t.FireCooldown--;
+                if (t.DashCooldown > 0) t.DashCooldown--;
+                if (t.DashTicks > 0) t.DashTicks--;
                 if (!t.Alive) continue;
 
                 PlayerInput input = inputs[i];
@@ -39,10 +41,21 @@ namespace Tanks.Sim
                 // visually snaps to face the input direction (no rotation inertia yet).
                 int wx = (input.Right ? 1 : 0) - (input.Left ? 1 : 0);
                 int wy = (input.Forward ? 1 : 0) - (input.Back ? 1 : 0);
+
+                // Dash: edge-triggered by the sampler, gated by cooldown here. Requires a
+                // movement direction — pressing dash with no direction does nothing.
+                if (input.Dash && t.DashCooldown == 0 && (wx != 0 || wy != 0))
+                {
+                    t.DashTicks = SimConfig.DashDurationTicks;
+                    t.DashCooldown = SimConfig.DashCooldownTicks;
+                }
+
                 if (wx != 0 || wy != 0)
                 {
                     // Scale per-axis on diagonals so total speed equals cardinal speed.
                     Fixed perAxis = (wx != 0 && wy != 0) ? SimConfig.DiagonalMoveSpeed : SimConfig.TankMoveSpeed;
+                    // Burst of speed while the dash is active.
+                    if (t.DashTicks > 0) perAxis = perAxis * SimConfig.DashSpeedMultiplier;
                     Fixed dx = perAxis * wx;
                     Fixed dy = perAxis * wy;
                     t.X = ResolveTankX(t.X + dx, t.Y, arena);

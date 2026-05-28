@@ -10,11 +10,12 @@ namespace Tanks.Sim
     public enum InputButtons : byte
     {
         None    = 0,
-        Forward = 1 << 0,
-        Back    = 1 << 1,
-        Left    = 1 << 2, // rotate body counter-clockwise
-        Right   = 1 << 3, // rotate body clockwise
+        Forward = 1 << 0, // +Y movement
+        Back    = 1 << 1, // -Y movement
+        Left    = 1 << 2, // -X movement
+        Right   = 1 << 3, // +X movement
         Fire    = 1 << 4,
+        Dash    = 1 << 5, // burst of speed (sampler edge-triggers this)
     }
 
     public readonly struct PlayerInput : IEquatable<PlayerInput>
@@ -44,6 +45,7 @@ namespace Tanks.Sim
         public bool Left    => (Buttons & InputButtons.Left) != 0;
         public bool Right   => (Buttons & InputButtons.Right) != 0;
         public bool Fire    => (Buttons & InputButtons.Fire) != 0;
+        public bool Dash    => (Buttons & InputButtons.Dash) != 0;
 
         public bool Equals(PlayerInput other) => Buttons == other.Buttons && TurretAim == other.TurretAim;
         public override bool Equals(object obj) => obj is PlayerInput p && Equals(p);
