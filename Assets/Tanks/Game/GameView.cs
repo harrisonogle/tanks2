@@ -228,10 +228,9 @@ namespace Tanks.Game
 
         /// <summary>
         /// Trace the trajectory a freshly-fired shell from <paramref name="ownerIndex"/> would
-        /// follow — mirrors <c>Simulation.StepBulletWithReflection</c>'s reflection / detonation
-        /// rules, plus the owner-immunity check from <c>CheckBulletHitsTanks</c>. Pure rendering
-        /// math (floats; no determinism needed). Collects polyline vertices: muzzle, each bounce
-        /// point, terminus.
+        /// follow, stopping at the FIRST wall contact (no ricochets in the preview) or the first
+        /// opponent-tank hit. Deliberately a strictly-shorter, easier-to-read guide than the full
+        /// physics path. Pure rendering math (floats). Output polyline: muzzle, terminus.
         /// </summary>
         private static void TraceLoS(GameState state, int ownerIndex, Arena arena, List<Vector3> output)
         {
@@ -245,7 +244,6 @@ namespace Tanks.Game
             float speed = SimConfig.BulletSpeed.ToFloat();
             float vx = c * speed;
             float vy = s * speed;
-            int bouncesLeft = SimConfig.BulletMaxBounces;
             float arenaW = arena.Width.ToFloat();
             float arenaH = arena.Height.ToFloat();
             float reach = SimConfig.TankRadius.ToFloat() + SimConfig.BulletRadius.ToFloat();
@@ -256,31 +254,14 @@ namespace Tanks.Game
             {
                 float nx = px + vx;
                 float ny = py + vy;
-                bool bounced = false;
 
-                // Arena bounds — reflect each axis, or detonate at the bound when out of bounces.
-                if (nx < 0f)
-                {
-                    if (bouncesLeft > 0) { nx = -nx; vx = -vx; bouncesLeft--; bounced = true; }
-                    else { output.Add(new Vector3(0f, LosLineY, ny)); return; }
-                }
-                else if (nx > arenaW)
-                {
-                    if (bouncesLeft > 0) { nx = arenaW * 2f - nx; vx = -vx; bouncesLeft--; bounced = true; }
-                    else { output.Add(new Vector3(arenaW, LosLineY, ny)); return; }
-                }
-                if (ny < 0f)
-                {
-                    if (bouncesLeft > 0) { ny = -ny; vy = -vy; bouncesLeft--; bounced = true; }
-                    else { output.Add(new Vector3(nx, LosLineY, 0f)); return; }
-                }
-                else if (ny > arenaH)
-                {
-                    if (bouncesLeft > 0) { ny = arenaH * 2f - ny; vy = -vy; bouncesLeft--; bounced = true; }
-                    else { output.Add(new Vector3(nx, LosLineY, arenaH)); return; }
-                }
+                // Arena bounds — terminate at the contact bound (no reflection in the preview).
+                if (nx < 0f)     { output.Add(new Vector3(0f,      LosLineY, ny)); return; }
+                if (nx > arenaW) { output.Add(new Vector3(arenaW,  LosLineY, ny)); return; }
+                if (ny < 0f)     { output.Add(new Vector3(nx,      LosLineY, 0f)); return; }
+                if (ny > arenaH) { output.Add(new Vector3(nx,      LosLineY, arenaH)); return; }
 
-                // Interior wall blocks — reflect off the shallowest-penetration face, or detonate.
+                // Interior wall blocks — terminate at the shallowest-penetration face.
                 foreach (var w in arena.Walls)
                 {
                     float minX = w.MinX.ToFloat();
@@ -294,32 +275,20 @@ namespace Tanks.Game
                     float distBottom = ny - minY;
                     float distTop = maxY - ny;
                     bool exitX = Mathf.Min(distLeft, distRight) < Mathf.Min(distBottom, distTop);
-                    float faceX = distLeft < distRight ? minX : maxX;
-                    float faceY = distBottom < distTop ? minY : maxY;
-
-                    if (bouncesLeft > 0)
-                    {
-                        if (exitX) { nx = faceX; vx = -vx; }
-                        else { ny = faceY; vy = -vy; }
-                        bouncesLeft--;
-                        bounced = true;
-                    }
-                    else
-                    {
-                        if (exitX) nx = faceX; else ny = faceY;
-                        output.Add(new Vector3(nx, LosLineY, ny));
-                        return;
-                    }
-                    break; // process at most one wall per step (our arena's walls don't overlap)
+                    if (exitX) nx = distLeft < distRight ? minX : maxX;
+                    else       ny = distBottom < distTop ? minY : maxY;
+                    output.Add(new Vector3(nx, LosLineY, ny));
+                    return;
                 }
 
-                // Tank-hit check — terminate where the shell would land. Mirrors the sim's
-                // CheckBulletHitsTanks: owner is immune until the shell has ricocheted.
+                // Tank-hit check — terminate where the shell would land on a valid target. The
+                // owner is always pre-ricochet here (no ricochets in this preview), so it's
+                // permanently immune for the line's purposes.
                 for (int j = 0; j < SimConfig.PlayerCount; j++)
                 {
+                    if (j == ownerIndex) continue;
                     ref readonly Tank t = ref state.Tanks[j];
                     if (!t.Alive) continue;
-                    if (j == ownerIndex && bouncesLeft == SimConfig.BulletMaxBounces) continue;
                     float tx = t.X.ToFloat();
                     float ty = t.Y.ToFloat();
                     if (Mathf.Abs(nx - tx) <= reach && Mathf.Abs(ny - ty) <= reach)
@@ -329,13 +298,11 @@ namespace Tanks.Game
                     }
                 }
 
-                if (bounced) output.Add(new Vector3(nx, LosLineY, ny));
-
                 px = nx;
                 py = ny;
             }
 
-            // Safety cap reached without terminating; add the current position as a soft end.
+            // Safety cap reached (shouldn't happen with arena bounds always present); soft end.
             output.Add(new Vector3(px, LosLineY, py));
         }
     }
