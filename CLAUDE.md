@@ -12,6 +12,12 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 - **Determinism is the product.** All sim math goes through `Fixed` (16.16) and `Trig` (lookup
   tables). The canonical correctness signal is `GameState.Hash()` — two machines must agree on
   it per tick. The `DeterminismTests` are the canary; never let them regress.
+- **Same sim behavior on x86_64 AND ARM64.** Cross-architecture netcode is a goal (e.g., a
+  Windows PC playing against an Apple Silicon Mac). Anything that crosses the wire must be
+  bit-identical across architectures — int math is; `Math.Sin` / `Math.Cos` aren't guaranteed
+  to be in their last bits. The `Trig` table is baked as integer constants in source (see
+  `Trig.cs`) for that reason; if you add another precomputed lookup table for the sim, bake
+  it the same way (don't compute from a math-library call at static init).
 - **`Tanks.Game` is a thin view.** It samples input, calls `Simulation.Tick`, and renders
   primitives. It never contains gameplay rules.
 - **Code-driven setup, no hand-authored scenes.** `Bootstrap` ([RuntimeInitializeOnLoadMethod])
