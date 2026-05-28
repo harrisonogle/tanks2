@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Tanks.Sim;
 using UnityEngine;
 
@@ -23,17 +22,9 @@ namespace Tanks.Game
         private static readonly Color FrontMarkerColor = new Color(0.10f, 0.10f, 0.12f);
 
         private SimRunner _runner;
-        private Transform[] _tankRoots;       // empty parents carrying the body's facing
+        private Transform[] _tankRoots;   // empty parents carrying the body's facing
         private Transform[] _tankBarrels;
-        private LineRenderer[] _losLines;     // per-tank line-of-sight predictor (visual only)
-        private readonly List<Vector3> _losBuffer = new List<Vector3>();
         private GameObject[] _bullets;
-
-        // Line-of-sight rendering tuning.
-        private const float LosLineY = 0.3f;     // world Y of the trajectory line (matches bullet render Y)
-        private const float LosLineWidth = 0.04f;
-        private const float LosLineAlpha = 0.55f;
-        private const int LosMaxSteps = 400;     // safety cap on trace iterations (arena fits easily)
 
         private void Start()
         {
@@ -53,18 +44,15 @@ namespace Tanks.Game
                 ref readonly Tank t = ref state.Tanks[i];
                 var root = _tankRoots[i];
                 var barrel = _tankBarrels[i];
-                var losLine = _losLines[i];
 
                 if (!t.Alive)
                 {
                     root.gameObject.SetActive(false);
                     barrel.gameObject.SetActive(false);
-                    losLine.enabled = false;
                     continue;
                 }
                 root.gameObject.SetActive(true);
                 barrel.gameObject.SetActive(true);
-                losLine.enabled = true;
 
                 // Tank root carries the body's facing rotation; the visible cube and the small
                 // front orientation marker are children of root, so they share the rotation
@@ -82,15 +70,6 @@ namespace Tanks.Game
                 Vector3 bodyPos = ToWorld(t.X, t.Y, 0.35f);
                 barrel.position = bodyPos + turretDir * 0.55f;
                 barrel.rotation = Quaternion.LookRotation(turretDir, Vector3.up);
-
-                // Line of sight: trace the would-be shell path from the muzzle through any
-                // ricochets, terminating where the shell would detonate (wall, opponent tank,
-                // or the owner post-ricochet). Refreshed each frame.
-                _losBuffer.Clear();
-                TraceLoS(state, i, _runner.Arena, _losBuffer);
-                losLine.positionCount = _losBuffer.Count;
-                for (int k = 0; k < _losBuffer.Count; k++)
-                    losLine.SetPosition(k, _losBuffer[k]);
             }
 
             for (int i = 0; i < state.Bullets.Length; i++)
@@ -148,8 +127,6 @@ namespace Tanks.Game
             float d = SimConfig.TankRadius.ToFloat() * 2f;
             _tankRoots = new Transform[SimConfig.PlayerCount];
             _tankBarrels = new Transform[SimConfig.PlayerCount];
-            _losLines = new LineRenderer[SimConfig.PlayerCount];
-            var losShader = Shader.Find("Sprites/Default"); // unlit, alpha-blended, built-in
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 // Empty root carries the body's facing; the body cube and the front marker hang
@@ -175,24 +152,8 @@ namespace Tanks.Game
                 var barrel = CreateBox($"Tank{i}-Barrel", BarrelColor);
                 barrel.localScale = new Vector3(0.18f, 0.18f, 0.9f);
 
-                // Line of sight: a thin world-space line showing where the shell would go if
-                // fired right now (through ricochets, terminating where it would detonate).
-                // Pure visual — Sim/Net layers don't know it exists.
-                var losGo = new GameObject($"Tank{i}-LoS");
-                var lr = losGo.AddComponent<LineRenderer>();
-                lr.material = new Material(losShader);
-                Color baseColor = i == 0 ? P0Color : P1Color;
-                Color losColor = new Color(baseColor.r, baseColor.g, baseColor.b, LosLineAlpha);
-                lr.startColor = losColor;
-                lr.endColor = losColor;
-                lr.startWidth = LosLineWidth;
-                lr.endWidth = LosLineWidth;
-                lr.useWorldSpace = true;
-                lr.positionCount = 0;
-
                 _tankRoots[i] = root;
                 _tankBarrels[i] = barrel;
-                _losLines[i] = lr;
             }
         }
 
@@ -224,86 +185,6 @@ namespace Tanks.Game
             if (col != null) Destroy(col);
             go.GetComponent<Renderer>().material.color = color;
             return go.transform;
-        }
-
-        /// <summary>
-        /// Trace the trajectory a freshly-fired shell from <paramref name="ownerIndex"/> would
-        /// follow, stopping at the FIRST wall contact (no ricochets in the preview) or the first
-        /// opponent-tank hit. Deliberately a strictly-shorter, easier-to-read guide than the full
-        /// physics path. Pure rendering math (floats). Output polyline: muzzle, terminus.
-        /// </summary>
-        private static void TraceLoS(GameState state, int ownerIndex, Arena arena, List<Vector3> output)
-        {
-            ref readonly Tank owner = ref state.Tanks[ownerIndex];
-
-            float c = Trig.Cos(owner.TurretAngle).ToFloat();
-            float s = Trig.Sin(owner.TurretAngle).ToFloat();
-            float muzzleOffset = SimConfig.TankRadius.ToFloat() + SimConfig.BulletRadius.ToFloat() + 0.05f;
-            float px = owner.X.ToFloat() + c * muzzleOffset;
-            float py = owner.Y.ToFloat() + s * muzzleOffset;
-            float speed = SimConfig.BulletSpeed.ToFloat();
-            float vx = c * speed;
-            float vy = s * speed;
-            float arenaW = arena.Width.ToFloat();
-            float arenaH = arena.Height.ToFloat();
-            float reach = SimConfig.TankRadius.ToFloat() + SimConfig.BulletRadius.ToFloat();
-
-            output.Add(new Vector3(px, LosLineY, py));
-
-            for (int step = 0; step < LosMaxSteps; step++)
-            {
-                float nx = px + vx;
-                float ny = py + vy;
-
-                // Arena bounds — terminate at the contact bound (no reflection in the preview).
-                if (nx < 0f)     { output.Add(new Vector3(0f,      LosLineY, ny)); return; }
-                if (nx > arenaW) { output.Add(new Vector3(arenaW,  LosLineY, ny)); return; }
-                if (ny < 0f)     { output.Add(new Vector3(nx,      LosLineY, 0f)); return; }
-                if (ny > arenaH) { output.Add(new Vector3(nx,      LosLineY, arenaH)); return; }
-
-                // Interior wall blocks — terminate at the shallowest-penetration face.
-                foreach (var w in arena.Walls)
-                {
-                    float minX = w.MinX.ToFloat();
-                    float maxX = w.MaxX.ToFloat();
-                    float minY = w.MinY.ToFloat();
-                    float maxY = w.MaxY.ToFloat();
-                    if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
-
-                    float distLeft = nx - minX;
-                    float distRight = maxX - nx;
-                    float distBottom = ny - minY;
-                    float distTop = maxY - ny;
-                    bool exitX = Mathf.Min(distLeft, distRight) < Mathf.Min(distBottom, distTop);
-                    if (exitX) nx = distLeft < distRight ? minX : maxX;
-                    else       ny = distBottom < distTop ? minY : maxY;
-                    output.Add(new Vector3(nx, LosLineY, ny));
-                    return;
-                }
-
-                // Tank-hit check — terminate where the shell would land on a valid target. The
-                // owner is always pre-ricochet here (no ricochets in this preview), so it's
-                // permanently immune for the line's purposes.
-                for (int j = 0; j < SimConfig.PlayerCount; j++)
-                {
-                    if (j == ownerIndex) continue;
-                    ref readonly Tank t = ref state.Tanks[j];
-                    if (!t.Alive) continue;
-                    float tx = t.X.ToFloat();
-                    float ty = t.Y.ToFloat();
-                    if (Mathf.Abs(nx - tx) <= reach && Mathf.Abs(ny - ty) <= reach)
-                    {
-                        output.Add(new Vector3(nx, LosLineY, ny));
-                        return;
-                    }
-                }
-
-                px = nx;
-                py = ny;
-            }
-
-            // Safety cap reached (shouldn't happen with arena bounds always present); soft end.
-            output.Add(new Vector3(px, LosLineY, py));
         }
     }
 }
