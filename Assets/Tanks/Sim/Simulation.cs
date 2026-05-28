@@ -29,7 +29,12 @@ namespace Tanks.Sim
 
                 PlayerInput input = inputs[i];
 
-                // Rotation
+                // Turret aim is absolute — the input layer maintains it locally and sends it
+                // every tick (mouse / right-stick / accumulated Q/E offset). The sim just
+                // adopts it. Balance / turn-speed is the sampler's concern, not the sim's.
+                t.TurretAngle = input.TurretAim;
+
+                // Body rotation
                 if (input.Left) t.Angle = Trig.Normalize(t.Angle + SimConfig.TankTurnSpeed);
                 if (input.Right) t.Angle = Trig.Normalize(t.Angle - SimConfig.TankTurnSpeed);
 
@@ -94,7 +99,8 @@ namespace Tanks.Sim
             }
             if (slot < 0) return false;
 
-            FixVec2 dir = Trig.Direction(t.Angle);
+            // Bullets travel along the TURRET angle, not the body angle.
+            FixVec2 dir = Trig.Direction(t.TurretAngle);
             // Spawn just outside the muzzle so the shell doesn't instantly self-collide.
             Fixed offset = SimConfig.TankRadius + SimConfig.BulletRadius + Fixed.FromFloat(0.05f);
 

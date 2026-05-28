@@ -6,7 +6,8 @@ namespace Tanks.Sim
     {
         public Fixed X;
         public Fixed Y;
-        public int Angle;        // facing; turret == body for now
+        public int Angle;        // body facing (movement direction)
+        public int TurretAngle;  // turret facing (fire direction); set absolute from PlayerInput each tick
         public int Health;
         public int FireCooldown; // ticks until allowed to fire again
 
@@ -51,11 +52,13 @@ namespace Tanks.Sim
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 var spawn = SimConfig.SpawnPosition(i);
+                int angle = SimConfig.SpawnAngle(i);
                 s.Tanks[i] = new Tank
                 {
                     X = spawn.X,
                     Y = spawn.Y,
-                    Angle = SimConfig.SpawnAngle(i),
+                    Angle = angle,
+                    TurretAngle = angle,   // turret starts aligned with body facing
                     Health = SimConfig.TankMaxHealth,
                     FireCooldown = 0,
                 };
@@ -109,6 +112,7 @@ namespace Tanks.Sim
                 h = Mix(h, t.X.Raw);
                 h = Mix(h, t.Y.Raw);
                 h = Mix(h, t.Angle);
+                h = Mix(h, t.TurretAngle);
                 h = Mix(h, t.Health);
                 h = Mix(h, t.FireCooldown);
             }

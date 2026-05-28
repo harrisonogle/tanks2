@@ -41,8 +41,8 @@ for lockstep and rollback:
 
 ### Controls (local 2-player sandbox)
 
-- **P1 (blue):** `W`/`A`/`S`/`D` to move & turn, `Space` to fire
-- **P2 (red):** Arrow keys to move & turn, `Enter` to fire
+- **P1 (blue):** `W`/`A`/`S`/`D` move & turn body, `Q`/`E` rotate turret, `Space` fire
+- **P2 (red):** Arrow keys move & turn body, `,` / `.` rotate turret, `Enter` fire
 - **`R`:** reset the match
 
 ## Run the tests (no Unity needed)

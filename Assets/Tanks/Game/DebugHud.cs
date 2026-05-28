@@ -34,7 +34,9 @@ namespace Tanks.Game
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 bool alive = state.Tanks[i].Alive;
-                GUILayout.Label($"P{i + 1}: {(alive ? "alive" : "DEAD ")}  input={_runner.InputOf(i).Buttons}");
+                int bodyDeg = (state.Tanks[i].Angle * 360) / Trig.AngleCount;
+                int turretDeg = (state.Tanks[i].TurretAngle * 360) / Trig.AngleCount;
+                GUILayout.Label($"P{i + 1}: {(alive ? "alive" : "DEAD ")}  body={bodyDeg,4}°  turret={turretDeg,4}°  in={_runner.InputOf(i).Buttons}");
             }
 
             int aliveCount = state.CountAlive();
@@ -46,8 +48,8 @@ namespace Tanks.Game
             }
 
             GUILayout.Space(8);
-            GUILayout.Label("P1 (blue): W/A/S/D move+turn, Space fire");
-            GUILayout.Label("P2 (red):  Arrows move+turn, Enter fire");
+            GUILayout.Label("P1 (blue): W/A/S/D move+turn body, Q/E rotate turret, Space fire");
+            GUILayout.Label("P2 (red):  Arrows move+turn body, , / . rotate turret, Enter fire");
             GUILayout.Label("R: reset match");
 
             GUILayout.Space(8);

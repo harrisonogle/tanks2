@@ -80,6 +80,7 @@ namespace Tanks.Game
         public void ResetMatch()
         {
             State = GameState.CreateInitial();
+            InputSampler.Reset();   // realign stored turret angles with the new spawn orientations
             LastHash = State.Hash();
             History.Clear();
             History.Record(State);

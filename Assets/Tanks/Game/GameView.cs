@@ -21,7 +21,8 @@ namespace Tanks.Game
         private static readonly Color BarrelColor = new Color(0.90f, 0.90f, 0.95f);
 
         private SimRunner _runner;
-        private Transform[] _tanks;
+        private Transform[] _tankBodies;
+        private Transform[] _tankBarrels;
         private GameObject[] _bullets;
 
         private void Start()
@@ -40,14 +41,32 @@ namespace Tanks.Game
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 ref readonly Tank t = ref state.Tanks[i];
-                var tr = _tanks[i];
-                if (!t.Alive) { tr.gameObject.SetActive(false); continue; }
+                var body = _tankBodies[i];
+                var barrel = _tankBarrels[i];
 
-                tr.gameObject.SetActive(true);
-                tr.position = ToWorld(t.X, t.Y, 0.3f);
-                float c = Trig.Cos(t.Angle).ToFloat();
-                float s = Trig.Sin(t.Angle).ToFloat();
-                tr.rotation = Quaternion.LookRotation(new Vector3(c, 0f, s), Vector3.up);
+                if (!t.Alive)
+                {
+                    body.gameObject.SetActive(false);
+                    barrel.gameObject.SetActive(false);
+                    continue;
+                }
+                body.gameObject.SetActive(true);
+                barrel.gameObject.SetActive(true);
+
+                // Body: position + rotation from BODY angle (movement direction).
+                body.position = ToWorld(t.X, t.Y, 0.3f);
+                float bc = Trig.Cos(t.Angle).ToFloat();
+                float bs = Trig.Sin(t.Angle).ToFloat();
+                body.rotation = Quaternion.LookRotation(new Vector3(bc, 0f, bs), Vector3.up);
+
+                // Barrel: position + rotation from TURRET angle (fire direction, independent
+                // of body). Offset forward by ~half a barrel length so it visibly sticks out.
+                float tc = Trig.Cos(t.TurretAngle).ToFloat();
+                float ts = Trig.Sin(t.TurretAngle).ToFloat();
+                Vector3 turretDir = new Vector3(tc, 0f, ts);
+                Vector3 bodyPos = ToWorld(t.X, t.Y, 0.35f);
+                barrel.position = bodyPos + turretDir * 0.55f;
+                barrel.rotation = Quaternion.LookRotation(turretDir, Vector3.up);
             }
 
             for (int i = 0; i < state.Bullets.Length; i++)
@@ -103,20 +122,20 @@ namespace Tanks.Game
         private void BuildTanks()
         {
             float d = SimConfig.TankRadius.ToFloat() * 2f;
-            _tanks = new Transform[SimConfig.PlayerCount];
+            _tankBodies = new Transform[SimConfig.PlayerCount];
+            _tankBarrels = new Transform[SimConfig.PlayerCount];
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 var body = CreateBox($"Tank{i}", i == 0 ? P0Color : P1Color);
                 body.localScale = new Vector3(d, 0.6f, d);
 
-                // Barrel: a child pointing +Z (forward). LookRotation aims the body's +Z
-                // along the facing direction, so the barrel always points where the tank aims.
+                // Barrel: a SIBLING (not a child) of the body. Each frame its world transform
+                // is set from the turret angle, which is independent of the body's facing.
                 var barrel = CreateBox($"Tank{i}-Barrel", BarrelColor);
-                barrel.SetParent(body, worldPositionStays: false);
                 barrel.localScale = new Vector3(0.18f, 0.18f, 0.9f);
-                barrel.localPosition = new Vector3(0f, 0f, 0.55f);
 
-                _tanks[i] = body;
+                _tankBodies[i] = body;
+                _tankBarrels[i] = barrel;
             }
         }
 

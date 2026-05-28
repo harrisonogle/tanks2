@@ -4,17 +4,18 @@ using Tanks.Sim;
 namespace Tanks.Net
 {
     /// <summary>
-    /// Wire format for a single player's input on a single tick. Six bytes:
+    /// Wire format for a single player's input on a single tick. Eight bytes:
     ///   [0..3] tick (uint32, little-endian)
     ///   [4]    player id
     ///   [5]    button bitfield
+    ///   [6..7] turret aim (uint16 LE; low 11 bits used — see <see cref="Trig.AngleCount"/>)
     ///
     /// This is the smallest useful packet for lockstep/rollback. Real netcode will batch
     /// several ticks per datagram and add sequencing/acks — but the payload stays this small.
     /// </summary>
     public static class InputCodec
     {
-        public const int MessageSize = 6;
+        public const int MessageSize = 8;
 
         public static int Write(Span<byte> dst, uint tick, int player, PlayerInput input)
         {
@@ -24,7 +25,9 @@ namespace Tanks.Net
             dst[2] = (byte)((tick >> 16) & 0xFF);
             dst[3] = (byte)((tick >> 24) & 0xFF);
             dst[4] = (byte)player;
-            dst[5] = input.ToByte();
+            dst[5] = (byte)input.Buttons;
+            dst[6] = (byte)(input.TurretAim & 0xFF);
+            dst[7] = (byte)((input.TurretAim >> 8) & 0xFF);
             return MessageSize;
         }
 
@@ -40,7 +43,8 @@ namespace Tanks.Net
             if (src.Length < MessageSize) throw new ArgumentException("buffer too small", nameof(src));
             tick = (uint)(src[0] | (src[1] << 8) | (src[2] << 16) | (src[3] << 24));
             player = src[4];
-            input = PlayerInput.FromByte(src[5]);
+            int turretAim = src[6] | (src[7] << 8);
+            input = new PlayerInput((InputButtons)src[5], turretAim);
         }
     }
 }

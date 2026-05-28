@@ -45,12 +45,12 @@ Assets/Tanks/
                         Fixed (16.16), Trig (lookup tables), GameState, Simulation.Tick,
                         Arena, Xorshift32
   Net/   Tanks.Net    — also pure C#; ITransport, InProcessNetwork (latency/jitter/loss),
-                        InputCodec (6-byte wire format)
+                        InputCodec (8-byte wire format: tick + player + buttons + turret aim)
   Game/  Tanks.Game   — thin Unity layer; Bootstrap (entry point, RuntimeInitialize),
                         SimRunner (fixed-tick loop + history + the SEAM),
                         GameView (primitives), DebugHud (IMGUI), InputSampler
 SimTests~/            — standalone `dotnet test` project linking Sim/Net source.
-                        19 tests covering math, gameplay, determinism, network seam.
+                        21 tests covering math, gameplay, determinism, network seam.
                         Run with: dotnet test (from repo root or that folder)
 ```
 
@@ -80,12 +80,15 @@ yourself wanting to reach for `UnityEngine` or `float` inside Sim/Net, stop.
 
 Already wired, working, and tested:
 - The deterministic sim. Two tanks driving and shooting, bullets bouncing off walls,
-  one-shot kill. 60-tick fixed step. `R` resets the match.
+  one-shot kill. **Turret aims independently of body** — absolute angle, quantized to
+  11 bits (2048 steps); the input layer maintains the angle locally, and the integer
+  rides the wire. Keyboard fallback: `Q`/`E` (P1), `,`/`.` (P2). 60-tick fixed step.
+  `R` resets the match.
 - `SimRunner` ticks at 60 Hz with frame-rate independence, hashes every state, and
   records snapshots into a 256-tick `StateHistory` ring buffer.
 - `InProcessNetwork` — two endpoints, send/receive bytes, tunable
   `LatencyTicks` / `JitterTicks` / `LossChance`. Reproducible (RNG-seeded).
-- `InputCodec` — 6 bytes per (tick, player, input) message.
+- `InputCodec` — 8 bytes per (tick, player, buttons + turret aim) message.
 - A test (`InputsExchangedOverWireKeepSimsInLockstep`) that already proves two
   independent sims exchanging inputs over the fake wire stay bit-identical for 1000
   ticks. **This is the loop you're going to build at runtime in `SimRunner` — it's
@@ -337,7 +340,7 @@ process and the snapshot/reconciliation/interpolation loop.
 
 1. Both: read this file. (~10 min)
 2. Both: skim `CLAUDE.md` and `Assets/Tanks/Sim/Simulation.cs` + `SimRunner.cs`. (~10 min)
-3. Run `dotnet test` from the repo root — confirm 19/19. (~1 min)
+3. Run `dotnet test` from the repo root — confirm 21/21. (~1 min)
 4. Open in Unity, press Play, drive the tanks a few seconds. (~2 min)
 5. Open `SimRunner.cs` to the `===== NETCODE SEAM =====` block. Start on M1.
 

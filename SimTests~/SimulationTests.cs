@@ -88,5 +88,27 @@ namespace Tanks.Tests
             }
             Assert.That(reflected, Is.True, "shell should bounce off the right wall and travel -X");
         }
+
+        [Test]
+        public void BulletFiresAlongTurretAimNotBody()
+        {
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+            // P0's body faces +X (angle 0). Aim the turret at +Y (quarter turn CCW).
+            int aimAtPositiveY = Trig.AngleCount / 4;
+            var fire = new PlayerInput(InputButtons.Fire, aimAtPositiveY);
+
+            Simulation.Tick(s, arena, new[] { fire, PlayerInput.None });
+
+            // Find the spawned shell.
+            int idx = -1;
+            for (int i = 0; i < s.Bullets.Length; i++) if (s.Bullets[i].Active) { idx = i; break; }
+            Assert.That(idx, Is.GreaterThanOrEqualTo(0), "shell should have spawned");
+
+            // Velocity should point +Y (the turret direction), NOT +X (the body direction).
+            // cos(90°) is exactly 0 in the lookup table for a quarter turn, so VX is exactly 0.
+            Assert.That(s.Bullets[idx].VY.Raw, Is.GreaterThan(0), "shell should travel in +Y (turret aim)");
+            Assert.That(s.Bullets[idx].VX.Raw, Is.EqualTo(0), "shell VX should be zero for a 90° aim");
+        }
     }
 }

@@ -3,9 +3,8 @@ using System;
 namespace Tanks.Sim
 {
     /// <summary>
-    /// One player's input for one tick, packed into a single byte. Small on purpose:
-    /// this is exactly what gets serialized and sent over the wire for lockstep/rollback,
-    /// so keeping it tiny keeps per-tick bandwidth tiny.
+    /// One player's input for one tick. Small on purpose: this is exactly what gets
+    /// serialized and sent over the wire for lockstep/rollback.
     /// </summary>
     [Flags]
     public enum InputButtons : byte
@@ -13,8 +12,8 @@ namespace Tanks.Sim
         None    = 0,
         Forward = 1 << 0,
         Back    = 1 << 1,
-        Left    = 1 << 2, // rotate counter-clockwise
-        Right   = 1 << 3, // rotate clockwise
+        Left    = 1 << 2, // rotate body counter-clockwise
+        Right   = 1 << 3, // rotate body clockwise
         Fire    = 1 << 4,
     }
 
@@ -22,9 +21,23 @@ namespace Tanks.Sim
     {
         public readonly InputButtons Buttons;
 
-        public PlayerInput(InputButtons buttons) { Buttons = buttons; }
+        /// <summary>
+        /// Absolute turret aim, as an angle index in [0, <see cref="Trig.AngleCount"/>).
+        /// The input layer maintains this locally (mouse projection / right-stick / accumulated
+        /// keyboard offset) and sends it every tick. Quantization to integer happens BEFORE the
+        /// sim ever sees it — that's what keeps determinism intact across machines.
+        /// </summary>
+        public readonly ushort TurretAim;
 
-        public static readonly PlayerInput None = new PlayerInput(InputButtons.None);
+        public PlayerInput(InputButtons buttons) : this(buttons, 0) { }
+
+        public PlayerInput(InputButtons buttons, int turretAim)
+        {
+            Buttons = buttons;
+            TurretAim = (ushort)(turretAim & Trig.AngleMask);
+        }
+
+        public static readonly PlayerInput None = new PlayerInput(InputButtons.None, 0);
 
         public bool Forward => (Buttons & InputButtons.Forward) != 0;
         public bool Back    => (Buttons & InputButtons.Back) != 0;
@@ -32,12 +45,9 @@ namespace Tanks.Sim
         public bool Right   => (Buttons & InputButtons.Right) != 0;
         public bool Fire    => (Buttons & InputButtons.Fire) != 0;
 
-        public byte ToByte() => (byte)Buttons;
-        public static PlayerInput FromByte(byte b) => new PlayerInput((InputButtons)b);
-
-        public bool Equals(PlayerInput other) => Buttons == other.Buttons;
+        public bool Equals(PlayerInput other) => Buttons == other.Buttons && TurretAim == other.TurretAim;
         public override bool Equals(object obj) => obj is PlayerInput p && Equals(p);
-        public override int GetHashCode() => (int)Buttons;
-        public override string ToString() => Buttons.ToString();
+        public override int GetHashCode() => ((int)Buttons * 397) ^ TurretAim;
+        public override string ToString() => $"{Buttons} aim={TurretAim}";
     }
 }

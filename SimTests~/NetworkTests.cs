@@ -21,6 +21,19 @@ namespace Tanks.Tests
         }
 
         [Test]
+        public void CodecRoundTripsTurretAim()
+        {
+            // Aim value that exercises both bytes of the turret-aim field (>= 256, < 2048).
+            var input = new PlayerInput(InputButtons.Fire | InputButtons.Forward, turretAim: 1337);
+            var bytes = InputCodec.ToBytes(99u, 0, input);
+
+            InputCodec.Read(bytes, out _, out _, out PlayerInput decoded);
+            Assert.That(decoded.Buttons, Is.EqualTo(input.Buttons));
+            Assert.That(decoded.TurretAim, Is.EqualTo(1337));
+            Assert.That(decoded, Is.EqualTo(input));
+        }
+
+        [Test]
         public void ZeroLatencyDeliversImmediately()
         {
             var net = new InProcessNetwork(latencyTicks: 0);
