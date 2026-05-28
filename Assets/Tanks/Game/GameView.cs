@@ -19,9 +19,10 @@ namespace Tanks.Game
         private static readonly Color FloorColor = new Color(0.14f, 0.15f, 0.18f);
         private static readonly Color BulletColor = new Color(1.00f, 0.95f, 0.55f);
         private static readonly Color BarrelColor = new Color(0.90f, 0.90f, 0.95f);
+        private static readonly Color FrontMarkerColor = new Color(0.10f, 0.10f, 0.12f);
 
         private SimRunner _runner;
-        private Transform[] _tankBodies;
+        private Transform[] _tankRoots;   // empty parents carrying the body's facing
         private Transform[] _tankBarrels;
         private GameObject[] _bullets;
 
@@ -41,23 +42,25 @@ namespace Tanks.Game
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
                 ref readonly Tank t = ref state.Tanks[i];
-                var body = _tankBodies[i];
+                var root = _tankRoots[i];
                 var barrel = _tankBarrels[i];
 
                 if (!t.Alive)
                 {
-                    body.gameObject.SetActive(false);
+                    root.gameObject.SetActive(false);
                     barrel.gameObject.SetActive(false);
                     continue;
                 }
-                body.gameObject.SetActive(true);
+                root.gameObject.SetActive(true);
                 barrel.gameObject.SetActive(true);
 
-                // Body: position + rotation from BODY angle (movement direction).
-                body.position = ToWorld(t.X, t.Y, 0.3f);
+                // Tank root carries the body's facing rotation; the visible cube and the small
+                // front orientation marker are children of root, so they share the rotation
+                // without us having to position each one individually each frame.
+                root.position = ToWorld(t.X, t.Y, 0.3f);
                 float bc = Trig.Cos(t.Angle).ToFloat();
                 float bs = Trig.Sin(t.Angle).ToFloat();
-                body.rotation = Quaternion.LookRotation(new Vector3(bc, 0f, bs), Vector3.up);
+                root.rotation = Quaternion.LookRotation(new Vector3(bc, 0f, bs), Vector3.up);
 
                 // Barrel: position + rotation from TURRET angle (fire direction, independent
                 // of body). Offset forward by ~half a barrel length so it visibly sticks out.
@@ -122,19 +125,34 @@ namespace Tanks.Game
         private void BuildTanks()
         {
             float d = SimConfig.TankRadius.ToFloat() * 2f;
-            _tankBodies = new Transform[SimConfig.PlayerCount];
+            _tankRoots = new Transform[SimConfig.PlayerCount];
             _tankBarrels = new Transform[SimConfig.PlayerCount];
             for (int i = 0; i < SimConfig.PlayerCount; i++)
             {
-                var body = CreateBox($"Tank{i}", i == 0 ? P0Color : P1Color);
+                // Empty root carries the body's facing; the body cube and the front marker hang
+                // off it. The root stays unscaled so each child's scale lives in clean units.
+                var root = new GameObject($"Tank{i}").transform;
+
+                // Visible body cube (matches the sim's collision footprint exactly).
+                var body = CreateBox($"Tank{i}-Body", i == 0 ? P0Color : P1Color);
+                body.SetParent(root, worldPositionStays: false);
                 body.localScale = new Vector3(d, 0.6f, d);
 
-                // Barrel: a SIBLING (not a child) of the body. Each frame its world transform
-                // is set from the turret angle, which is independent of the body's facing.
+                // Small dark marker sitting on top of the body's front edge — visual cue for
+                // body facing. In root-local space: body top is at Y=0.3, body front at Z=0.6;
+                // the marker (scale 0.4, 0.15, 0.3) is centered at (0, 0.375, 0.45) so its
+                // bottom touches the body's top face and its front aligns with the body's front.
+                var marker = CreateBox($"Tank{i}-Marker", FrontMarkerColor);
+                marker.SetParent(root, worldPositionStays: false);
+                marker.localScale = new Vector3(0.4f, 0.15f, 0.3f);
+                marker.localPosition = new Vector3(0f, 0.375f, 0.45f);
+
+                // Barrel: SIBLING of root (not a child), since it rotates with TurretAngle
+                // independently. Its world transform is set each frame in LateUpdate.
                 var barrel = CreateBox($"Tank{i}-Barrel", BarrelColor);
                 barrel.localScale = new Vector3(0.18f, 0.18f, 0.9f);
 
-                _tankBodies[i] = body;
+                _tankRoots[i] = root;
                 _tankBarrels[i] = barrel;
             }
         }
