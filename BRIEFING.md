@@ -82,8 +82,10 @@ Already wired, working, and tested:
 - The deterministic sim. Two tanks driving and shooting, bullets bouncing off walls,
   one-shot kill. **Turret aims independently of body** — absolute angle, quantized to
   11 bits (2048 steps); the input layer maintains the angle locally, and the integer
-  rides the wire. Keyboard fallback: `Q`/`E` (P1), `,`/`.` (P2). 60-tick fixed step.
-  `R` resets the match.
+  rides the wire. **Inputs come from the Unity Input System** (`com.unity.inputsystem`):
+  P1 = `Gamepad.all[0]` if connected else WASD+Q/E keyboard; P2 = `Gamepad.all[1]` else
+  arrows+,/. keyboard. Right stick → quantized turret aim; A/Cross or right trigger →
+  fire. 60-tick fixed step. `R` resets the match.
 - `SimRunner` ticks at 60 Hz with frame-rate independence, hashes every state, and
   records snapshots into a 256-tick `StateHistory` ring buffer.
 - `InProcessNetwork` — two endpoints, send/receive bytes, tunable

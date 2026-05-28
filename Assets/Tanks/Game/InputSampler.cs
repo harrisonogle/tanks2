@@ -1,28 +1,40 @@
 using Tanks.Sim;
 using UnityEngine;
+using UnityEngine.InputSystem;
+// UnityEngine.InputSystem ships its own PlayerInput MonoBehaviour (for editor-bound device
+// configuration, which we don't use). Alias the unqualified name to OUR struct so the rest
+// of this file reads naturally.
+using PlayerInput = Tanks.Sim.PlayerInput;
 
 namespace Tanks.Game
 {
     /// <summary>
-    /// Reads the keyboard into <see cref="PlayerInput"/> structs (legacy Input — zero setup).
-    /// Both players are sampled locally for the offline sandbox. Once netcode is wired, only
-    /// the LOCAL player is sampled here; the remote player's input arrives over the transport.
+    /// Per-player input sampler built on Unity's Input System.
     ///
-    /// Turret aim is absolute. The sampler maintains each player's current turret angle as
-    /// stored state (Q/E for P1, comma/period for P2 nudge it in world space, independent of
-    /// the body's facing). This means: float math (mouse projection, gamepad atan2, …) can
-    /// later replace this keyboard accumulator, and the sim never sees a non-integer angle.
+    /// Auto-binding:
+    ///   P1 = Gamepad.all[0] if at least one gamepad is connected, else WASD/Space/Q/E keyboard.
+    ///   P2 = Gamepad.all[1] if at least two gamepads are connected, else Arrows/Enter/,/. keyboard.
+    /// Plug an Xbox + PS controller in before pressing Play and both peers pick them up.
+    ///
+    /// Determinism story is the same as before: the sampler does float math (stick atan2 /
+    /// keyboard accumulation) on the LOCAL side, then quantizes to a <see cref="Trig.AngleCount"/>
+    /// integer angle. The sim and wire never see a non-integer aim.
     /// </summary>
     public static class InputSampler
     {
-        // Per-tick angle delta when a turret-turn key is held. Matched to body turn speed so
-        // both feel equally responsive. Purely a UX choice — the sim has no opinion on rate.
+        // Per-tick angle delta when a keyboard turret-turn key is held. Matched to body turn
+        // speed so both feel equally responsive. Gamepads bypass this — they set absolute aim.
         private const int KeyboardTurretTurnSpeed = SimConfig.TankTurnSpeed;
+
+        // Below these thresholds the stick is treated as neutral.
+        private const float MoveDeadzone = 0.4f;
+        private const float AimDeadzoneSqr = 0.3f * 0.3f;
+        private const float TriggerThreshold = 0.5f;
 
         private static int s_p1Turret;
         private static int s_p2Turret;
 
-        /// <summary>Reset stored turret angles to the spawn orientations. Call from match reset.</summary>
+        /// <summary>Realign stored turret angles to the spawn orientations (call on match reset).</summary>
         public static void Reset()
         {
             s_p1Turret = SimConfig.SpawnAngle(0);
@@ -31,35 +43,85 @@ namespace Tanks.Game
 
         public static PlayerInput SampleP1()
         {
-            InputButtons b = InputButtons.None;
-            if (Input.GetKey(KeyCode.W)) b |= InputButtons.Forward;
-            if (Input.GetKey(KeyCode.S)) b |= InputButtons.Back;
-            if (Input.GetKey(KeyCode.A)) b |= InputButtons.Left;
-            if (Input.GetKey(KeyCode.D)) b |= InputButtons.Right;
-            if (Input.GetKey(KeyCode.Space)) b |= InputButtons.Fire;
-
-            // Q / E rotate the turret in WORLD space (independent of body).
-            // Q = CCW (matches body Left = increasing angle); E = CW.
-            if (Input.GetKey(KeyCode.Q)) s_p1Turret = Trig.Normalize(s_p1Turret + KeyboardTurretTurnSpeed);
-            if (Input.GetKey(KeyCode.E)) s_p1Turret = Trig.Normalize(s_p1Turret - KeyboardTurretTurnSpeed);
-
-            return new PlayerInput(b, s_p1Turret);
+            var pads = Gamepad.all;
+            if (pads.Count >= 1) return SampleGamepad(pads[0], ref s_p1Turret);
+            return SampleKeyboardLeft(ref s_p1Turret);
         }
 
         public static PlayerInput SampleP2()
         {
+            var pads = Gamepad.all;
+            if (pads.Count >= 2) return SampleGamepad(pads[1], ref s_p2Turret);
+            return SampleKeyboardRight(ref s_p2Turret);
+        }
+
+        // --- Gamepad ---
+
+        private static PlayerInput SampleGamepad(Gamepad pad, ref int storedTurret)
+        {
+            Vector2 left = pad.leftStick.ReadValue();
+            Vector2 right = pad.rightStick.ReadValue();
+
             InputButtons b = InputButtons.None;
-            if (Input.GetKey(KeyCode.UpArrow)) b |= InputButtons.Forward;
-            if (Input.GetKey(KeyCode.DownArrow)) b |= InputButtons.Back;
-            if (Input.GetKey(KeyCode.LeftArrow)) b |= InputButtons.Left;
-            if (Input.GetKey(KeyCode.RightArrow)) b |= InputButtons.Right;
-            if (Input.GetKey(KeyCode.Return)) b |= InputButtons.Fire;
+            if (left.y > MoveDeadzone) b |= InputButtons.Forward;
+            if (left.y < -MoveDeadzone) b |= InputButtons.Back;
+            if (left.x < -MoveDeadzone) b |= InputButtons.Left;
+            if (left.x > MoveDeadzone) b |= InputButtons.Right;
 
-            // ',' / '.' rotate the turret. Comma = CCW, period = CW.
-            if (Input.GetKey(KeyCode.Comma)) s_p2Turret = Trig.Normalize(s_p2Turret + KeyboardTurretTurnSpeed);
-            if (Input.GetKey(KeyCode.Period)) s_p2Turret = Trig.Normalize(s_p2Turret - KeyboardTurretTurnSpeed);
+            if (pad.buttonSouth.isPressed || pad.rightTrigger.ReadValue() > TriggerThreshold)
+                b |= InputButtons.Fire;
 
-            return new PlayerInput(b, s_p2Turret);
+            // Right stick: when past the deadzone, snap absolute aim to the stick direction.
+            // Inside the deadzone, hold the last aim (so releasing the stick doesn't snap to 0).
+            if (right.sqrMagnitude > AimDeadzoneSqr)
+            {
+                // atan2 returns radians in [-π, π]; 0 = +X, π/2 = +Y (CCW).
+                // Map to a Trig angle index: scale by AngleCount / (2π), then wrap.
+                float angleRad = Mathf.Atan2(right.y, right.x);
+                int aim = Mathf.RoundToInt(angleRad / (2f * Mathf.PI) * Trig.AngleCount);
+                storedTurret = Trig.Normalize(aim); // & AngleMask handles negatives correctly
+            }
+
+            return new PlayerInput(b, storedTurret);
+        }
+
+        // --- Keyboard (fallback) ---
+
+        private static PlayerInput SampleKeyboardLeft(ref int storedTurret)
+        {
+            var kb = Keyboard.current;
+            if (kb == null) return new PlayerInput(InputButtons.None, storedTurret);
+
+            InputButtons b = InputButtons.None;
+            if (kb[Key.W].isPressed) b |= InputButtons.Forward;
+            if (kb[Key.S].isPressed) b |= InputButtons.Back;
+            if (kb[Key.A].isPressed) b |= InputButtons.Left;
+            if (kb[Key.D].isPressed) b |= InputButtons.Right;
+            if (kb[Key.Space].isPressed) b |= InputButtons.Fire;
+
+            // Q / E rotate the turret in WORLD space (independent of body).
+            if (kb[Key.Q].isPressed) storedTurret = Trig.Normalize(storedTurret + KeyboardTurretTurnSpeed);
+            if (kb[Key.E].isPressed) storedTurret = Trig.Normalize(storedTurret - KeyboardTurretTurnSpeed);
+
+            return new PlayerInput(b, storedTurret);
+        }
+
+        private static PlayerInput SampleKeyboardRight(ref int storedTurret)
+        {
+            var kb = Keyboard.current;
+            if (kb == null) return new PlayerInput(InputButtons.None, storedTurret);
+
+            InputButtons b = InputButtons.None;
+            if (kb[Key.UpArrow].isPressed) b |= InputButtons.Forward;
+            if (kb[Key.DownArrow].isPressed) b |= InputButtons.Back;
+            if (kb[Key.LeftArrow].isPressed) b |= InputButtons.Left;
+            if (kb[Key.RightArrow].isPressed) b |= InputButtons.Right;
+            if (kb[Key.Enter].isPressed) b |= InputButtons.Fire;
+
+            if (kb[Key.Comma].isPressed) storedTurret = Trig.Normalize(storedTurret + KeyboardTurretTurnSpeed);
+            if (kb[Key.Period].isPressed) storedTurret = Trig.Normalize(storedTurret - KeyboardTurretTurnSpeed);
+
+            return new PlayerInput(b, storedTurret);
         }
     }
 }

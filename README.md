@@ -41,9 +41,16 @@ for lockstep and rollback:
 
 ### Controls (local 2-player sandbox)
 
+**Gamepad** (Xbox or PlayStation, auto-detected when connected): left stick to drive, right
+stick to aim the turret, A/Cross or right trigger to fire. P1 binds to the first connected
+gamepad, P2 to the second.
+
+**Keyboard** (fallback for whichever slot has no gamepad):
+
 - **P1 (blue):** `W`/`A`/`S`/`D` move & turn body, `Q`/`E` rotate turret, `Space` fire
 - **P2 (red):** Arrow keys move & turn body, `,` / `.` rotate turret, `Enter` fire
-- **`R`:** reset the match
+
+**`R`:** reset the match (works from any device)
 
 ## Run the tests (no Unity needed)
 

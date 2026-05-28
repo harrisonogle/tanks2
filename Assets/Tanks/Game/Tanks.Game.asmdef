@@ -3,7 +3,8 @@
     "rootNamespace": "Tanks.Game",
     "references": [
         "Tanks.Sim",
-        "Tanks.Net"
+        "Tanks.Net",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
