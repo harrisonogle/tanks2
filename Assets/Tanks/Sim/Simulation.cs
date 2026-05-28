@@ -1,4 +1,4 @@
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>
     /// The deterministic step function: <c>state + inputs -> next state</c>.

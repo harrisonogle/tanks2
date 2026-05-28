@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>
     /// Deterministic 16.16 signed fixed-point number.

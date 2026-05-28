@@ -2,7 +2,7 @@
 
   <!--
     Standalone test project for the PURE simulation + net layers.
-    It links the same .cs files Unity compiles (Assets/Tankz/Sim and Assets/Tankz/Net)
+    It links the same .cs files Unity compiles (Assets/Tanks/Sim and Assets/Tanks/Net)
     so `dotnet test` verifies the exact code the game runs, with a fast CLI feedback loop
     and zero Unity dependency. This only works because Sim/Net contain no UnityEngine usage.
 
@@ -15,15 +15,15 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <RootNamespace>Tankz.Tests</RootNamespace>
+    <RootNamespace>Tanks.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Link (don't copy) the simulation + network sources. -->
-    <Compile Include="..\Assets\Tankz\Sim\**\*.cs">
+    <Compile Include="..\Assets\Tanks\Sim\**\*.cs">
       <Link>Sim\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Compile>
-    <Compile Include="..\Assets\Tankz\Net\**\*.cs">
+    <Compile Include="..\Assets\Tanks\Net\**\*.cs">
       <Link>Net\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Compile>
   </ItemGroup>

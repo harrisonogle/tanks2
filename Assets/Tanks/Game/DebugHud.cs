@@ -1,7 +1,7 @@
-using Tankz.Sim;
+using Tanks.Sim;
 using UnityEngine;
 
-namespace Tankz.Game
+namespace Tanks.Game
 {
     /// <summary>
     /// Crude IMGUI overlay (zero setup). Shows the live tick, the deterministic state hash,
@@ -24,7 +24,7 @@ namespace Tankz.Game
 
             GUILayout.BeginArea(new Rect(10, 10, 360, 300), GUI.skin.box);
 
-            GUILayout.Label("TANKZ - local sandbox (no netcode yet)");
+            GUILayout.Label("TANKS - local sandbox (no netcode yet)");
             GUILayout.Space(4);
             GUILayout.Label($"Tick:       {state.Tick}");
             GUILayout.Label($"State hash: {(_runner.LastHash & 0xFFFFFFFFUL):X8}");

@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Tests
+namespace Tanks.Tests
 {
     public class FixedMathTests
     {

@@ -105,7 +105,7 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
-# ---- Tankz: standalone .NET test project (SimTests~) ----
+# ---- Tanks: standalone .NET test project (SimTests~) ----
 # Unity ignores folders ending in '~', so this lives outside the asset pipeline.
 # Ignore its build output, but force-track the hand-written csproj
 # (the global "*.csproj" rule above would otherwise exclude it).

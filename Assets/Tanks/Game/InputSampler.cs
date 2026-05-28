@@ -1,7 +1,7 @@
-using Tankz.Sim;
+using Tanks.Sim;
 using UnityEngine;
 
-namespace Tankz.Game
+namespace Tanks.Game
 {
     /// <summary>
     /// Reads the keyboard into <see cref="PlayerInput"/> structs (legacy Input — zero setup).

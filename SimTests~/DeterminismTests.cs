@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Tests
+namespace Tanks.Tests
 {
     /// <summary>
     /// These are the tests rollback depends on. If any fails, online sync is impossible —

@@ -1,4 +1,4 @@
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>
     /// Tiny deterministic PRNG (xorshift32). Same seed -> same sequence everywhere.

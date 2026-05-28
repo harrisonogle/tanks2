@@ -1,7 +1,7 @@
 using System;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Game
+namespace Tanks.Game
 {
     /// <summary>
     /// Ring buffer of past <see cref="GameState"/> snapshots, indexed by tick. This is the

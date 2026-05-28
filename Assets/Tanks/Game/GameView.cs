@@ -1,7 +1,7 @@
-using Tankz.Sim;
+using Tanks.Sim;
 using UnityEngine;
 
-namespace Tankz.Game
+namespace Tanks.Game
 {
     /// <summary>
     /// Renders the simulation state with crude primitives. This is a pure "view": it reads

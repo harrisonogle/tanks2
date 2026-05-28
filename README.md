@@ -1,6 +1,6 @@
-# Tankz2
+# Tanks2
 
-A crude recreation of the Wii game *Tankz* as an **online 1v1**, built to learn netcode
+A crude recreation of the Wii game *Tanks* as an **online 1v1**, built to learn netcode
 (deterministic lockstep → rollback, with client-server reachable later). Graphics are
 intentionally minimal — primitives and a debug HUD. The interesting part is the netcode.
 
@@ -24,9 +24,9 @@ for lockstep and rollback:
 
 | Folder | Assembly | Unity? | Purpose |
 |---|---|---|---|
-| `Assets/Tankz/Sim` | `Tankz.Sim` | no (`noEngineReferences`) | the entire game: `Fixed` math, `Trig`, `GameState`, `Simulation.Tick`, `Arena` |
-| `Assets/Tankz/Net` | `Tankz.Net` | no | `ITransport`, `InProcessNetwork` (fake net w/ latency/jitter/loss), `InputCodec` (wire format) |
-| `Assets/Tankz/Game` | `Tankz.Game` | yes | `Bootstrap` (entry point), `SimRunner` (tick loop + history), `GameView` (rendering), `DebugHud`, `InputSampler` |
+| `Assets/Tanks/Sim` | `Tanks.Sim` | no (`noEngineReferences`) | the entire game: `Fixed` math, `Trig`, `GameState`, `Simulation.Tick`, `Arena` |
+| `Assets/Tanks/Net` | `Tanks.Net` | no | `ITransport`, `InProcessNetwork` (fake net w/ latency/jitter/loss), `InputCodec` (wire format) |
+| `Assets/Tanks/Game` | `Tanks.Game` | yes | `Bootstrap` (entry point), `SimRunner` (tick loop + history), `GameView` (rendering), `DebugHud`, `InputSampler` |
 | `SimTests~` | — | no | standalone `dotnet test` project; links the Sim/Net source for a fast CLI feedback loop |
 
 > `SimTests~` ends in `~` so Unity ignores it. It compiles the *same* `.cs` files the game
@@ -35,9 +35,9 @@ for lockstep and rollback:
 ## Run the game
 
 1. Open **Unity Hub → Add → Add project from disk** and select this folder
-   (`...\harrisonogle\Tankz2`). It's already configured for editor **6000.4.8f1**.
+   (`...\harrisonogle\Tanks2`). It's already configured for editor **6000.4.8f1**.
 2. Open it, wait for import, then press **Play**. Everything is created from code by
-   `Bootstrap` (see `Assets/Tankz/Game/Bootstrap.cs`) — there is no scene to set up.
+   `Bootstrap` (see `Assets/Tanks/Game/Bootstrap.cs`) — there is no scene to set up.
 
 ### Controls (local 2-player sandbox)
 
@@ -68,7 +68,7 @@ These verify the math, gameplay rules, and — most importantly — **determinis
 - [ ] **later:** real UDP transport behind `ITransport`; client-server authoritative mode.
 
 The netcode work starts at the clearly-marked **NETCODE SEAM** in
-`Assets/Tankz/Game/SimRunner.cs`.
+`Assets/Tanks/Game/SimRunner.cs`.
 
 ## Notes
 

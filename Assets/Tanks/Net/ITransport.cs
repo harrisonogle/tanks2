@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Net
+namespace Tanks.Net
 {
     /// <summary>
     /// Minimal datagram transport: send bytes to the peer, poll for bytes that have arrived.

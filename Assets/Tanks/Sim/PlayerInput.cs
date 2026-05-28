@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>
     /// One player's input for one tick, packed into a single byte. Small on purpose:

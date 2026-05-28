@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Net
+namespace Tanks.Net
 {
     /// <summary>
     /// A same-process link between two endpoints (0 and 1) that models real-network pain:

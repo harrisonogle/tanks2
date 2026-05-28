@@ -1,8 +1,8 @@
 {
-    "name": "Tankz.Net",
-    "rootNamespace": "Tankz.Net",
+    "name": "Tanks.Net",
+    "rootNamespace": "Tanks.Net",
     "references": [
-        "Tankz.Sim"
+        "Tanks.Sim"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

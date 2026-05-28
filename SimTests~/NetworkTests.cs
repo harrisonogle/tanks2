@@ -1,8 +1,8 @@
 using NUnit.Framework;
-using Tankz.Net;
-using Tankz.Sim;
+using Tanks.Net;
+using Tanks.Sim;
 
-namespace Tankz.Tests
+namespace Tanks.Tests
 {
     public class NetworkTests
     {

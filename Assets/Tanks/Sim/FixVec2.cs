@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>Deterministic 2D vector built on <see cref="Fixed"/>.</summary>
     public readonly struct FixVec2 : IEquatable<FixVec2>

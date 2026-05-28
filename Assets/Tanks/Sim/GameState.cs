@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     public struct Tank
     {

@@ -1,7 +1,7 @@
 using System;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Net
+namespace Tanks.Net
 {
     /// <summary>
     /// Wire format for a single player's input on a single tick. Six bytes:

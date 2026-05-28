@@ -1,8 +1,8 @@
-using Tankz.Net;
-using Tankz.Sim;
+using Tanks.Net;
+using Tanks.Sim;
 using UnityEngine;
 
-namespace Tankz.Game
+namespace Tanks.Game
 {
     /// <summary>
     /// Drives the deterministic simulation at a fixed tick rate, independent of frame rate.

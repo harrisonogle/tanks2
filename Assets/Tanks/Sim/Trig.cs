@@ -1,6 +1,6 @@
 using System;
 
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>
     /// Deterministic trig via precomputed lookup tables. Angles are integer indices

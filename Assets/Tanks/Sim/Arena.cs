@@ -1,4 +1,4 @@
-namespace Tankz.Sim
+namespace Tanks.Sim
 {
     /// <summary>Axis-aligned bounding box in fixed-point world space.</summary>
     public readonly struct Aabb

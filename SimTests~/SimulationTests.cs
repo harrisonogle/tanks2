@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using Tankz.Sim;
+using Tanks.Sim;
 
-namespace Tankz.Tests
+namespace Tanks.Tests
 {
     /// <summary>Gameplay sanity checks — crude, but they pin down the core rules.</summary>
     public class SimulationTests
