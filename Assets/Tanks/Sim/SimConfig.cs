@@ -26,7 +26,7 @@ namespace Tanks.Sim
         // Bullet
         public static readonly Fixed BulletSpeed = Fixed.FromFloat(0.28f);   // units per tick (~16.8 u/s)
         public static readonly Fixed BulletRadius = Fixed.FromFloat(0.12f);
-        public const int BulletMaxBounces = 4;
+        public const int BulletMaxBounces = 1;                               // single ricochet; the next surface contact detonates the shell (classic Tanks!)
         public const int BulletLifeTicks = 60 * 8;
         public const int BulletSpawnGraceTicks = 6;                          // ticks during which a shell ignores its owner
         public const int FireCooldownTicks = 24;

@@ -131,7 +131,7 @@ namespace Tanks.Sim
                 if (--b.Life <= 0) { b.Active = false; continue; }
 
                 StepBulletWithReflection(ref b, arena);
-                if (b.BouncesLeft < 0) { b.Active = false; continue; }
+                if (!b.Active) continue;   // terminal-contact detonation handled inside
 
                 CheckBulletHitsTanks(state, ref b);
             }
@@ -142,14 +142,31 @@ namespace Tanks.Sim
             Fixed nx = b.X + b.VX;
             Fixed ny = b.Y + b.VY;
 
-            // Reflect off the outer arena bounds.
-            if (nx < Fixed.Zero) { nx = -nx; b.VX = -b.VX; b.BouncesLeft--; }
-            else if (nx > arena.Width) { nx = arena.Width * 2 - nx; b.VX = -b.VX; b.BouncesLeft--; }
+            // Arena bounds: reflect each axis, or — if no bounces remain — stop at the bound
+            // and detonate the shell. Classic Tanks!: the SECOND surface contact destroys it.
+            if (nx < Fixed.Zero)
+            {
+                if (TryConsumeBounce(ref b)) { nx = -nx; b.VX = -b.VX; }
+                else { b.X = Fixed.Zero; b.Y = ny; b.Active = false; return; }
+            }
+            else if (nx > arena.Width)
+            {
+                if (TryConsumeBounce(ref b)) { nx = arena.Width * 2 - nx; b.VX = -b.VX; }
+                else { b.X = arena.Width; b.Y = ny; b.Active = false; return; }
+            }
+            if (ny < Fixed.Zero)
+            {
+                if (TryConsumeBounce(ref b)) { ny = -ny; b.VY = -b.VY; }
+                else { b.X = nx; b.Y = Fixed.Zero; b.Active = false; return; }
+            }
+            else if (ny > arena.Height)
+            {
+                if (TryConsumeBounce(ref b)) { ny = arena.Height * 2 - ny; b.VY = -b.VY; }
+                else { b.X = nx; b.Y = arena.Height; b.Active = false; return; }
+            }
 
-            if (ny < Fixed.Zero) { ny = -ny; b.VY = -b.VY; b.BouncesLeft--; }
-            else if (ny > arena.Height) { ny = arena.Height * 2 - ny; b.VY = -b.VY; b.BouncesLeft--; }
-
-            // Reflect off interior wall blocks (escape along the shallowest-penetration axis).
+            // Interior wall blocks: same deal — reflect off the shallowest-penetration face,
+            // or detonate at that face when bounces are spent.
             foreach (var w in arena.Walls)
             {
                 if (!w.ContainsPoint(nx, ny)) continue;
@@ -159,24 +176,37 @@ namespace Tanks.Sim
                 Fixed distBottom = ny - w.MinY;
                 Fixed distTop = w.MaxY - ny;
 
-                Fixed penX = Fixed.Min(distLeft, distRight);
-                Fixed penY = Fixed.Min(distBottom, distTop);
+                bool exitX = Fixed.Min(distLeft, distRight) < Fixed.Min(distBottom, distTop);
+                Fixed faceX = distLeft < distRight ? w.MinX : w.MaxX;
+                Fixed faceY = distBottom < distTop ? w.MinY : w.MaxY;
 
-                if (penX < penY)
+                if (TryConsumeBounce(ref b))
                 {
-                    nx = distLeft < distRight ? w.MinX : w.MaxX;
-                    b.VX = -b.VX;
+                    if (exitX) { nx = faceX; b.VX = -b.VX; }
+                    else { ny = faceY; b.VY = -b.VY; }
                 }
                 else
                 {
-                    ny = distBottom < distTop ? w.MinY : w.MaxY;
-                    b.VY = -b.VY;
+                    if (exitX) nx = faceX; else ny = faceY;
+                    b.X = nx; b.Y = ny;
+                    b.Active = false;
+                    return;
                 }
-                b.BouncesLeft--;
             }
 
             b.X = nx;
             b.Y = ny;
+        }
+
+        /// <summary>
+        /// Consume one of the bullet's remaining bounces. Returns true if a bounce was
+        /// available (and decremented); false if the shell should detonate at this contact.
+        /// </summary>
+        private static bool TryConsumeBounce(ref Bullet b)
+        {
+            if (b.BouncesLeft <= 0) return false;
+            b.BouncesLeft--;
+            return true;
         }
 
         private static void CheckBulletHitsTanks(GameState state, ref Bullet b)

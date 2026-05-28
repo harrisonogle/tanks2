@@ -166,5 +166,43 @@ namespace Tanks.Tests
             Simulation.Tick(s, arena, Both(Btn(InputButtons.Back | InputButtons.Left), PlayerInput.None));
             Assert.That(s.Tanks[0].Angle, Is.EqualTo(5 * Trig.AngleCount / 8));
         }
+
+        [Test]
+        public void BulletDetonatesOnSecondSurfaceContact()
+        {
+            // Hand-built bullet path with no tanks in the way: shoot along y=2 (below the
+            // interior pillars at y[6,14]) so the only surfaces it can hit are the left and
+            // right arena bounds. With BulletMaxBounces = 1, the first bound reflects and
+            // the second detonates the shell.
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+            s.Tanks[0].Health = 0;
+            s.Tanks[1].Health = 0;
+            s.Bullets[0] = new Bullet
+            {
+                Active = true,
+                X = Fixed.FromInt(5),
+                Y = Fixed.FromInt(2),
+                VX = -SimConfig.BulletSpeed,
+                VY = Fixed.Zero,
+                Owner = 0,
+                BouncesLeft = SimConfig.BulletMaxBounces,
+                Life = SimConfig.BulletLifeTicks,
+                Grace = 0,
+            };
+
+            int bounceCount = 0;
+            int prevSign = Fixed.Sign(s.Bullets[0].VX);
+            for (int i = 0; i < 2000 && s.Bullets[0].Active; i++)
+            {
+                Simulation.Tick(s, arena, new[] { PlayerInput.None, PlayerInput.None });
+                if (!s.Bullets[0].Active) break;
+                int sign = Fixed.Sign(s.Bullets[0].VX);
+                if (sign != 0 && sign != prevSign) { bounceCount++; prevSign = sign; }
+            }
+
+            Assert.That(s.Bullets[0].Active, Is.False, "shell should detonate after its second surface contact");
+            Assert.That(bounceCount, Is.EqualTo(1), "shell should bounce exactly once before detonating");
+        }
     }
 }
