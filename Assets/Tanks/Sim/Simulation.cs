@@ -128,7 +128,6 @@ namespace Tanks.Sim
                 Owner = owner,
                 BouncesLeft = SimConfig.BulletMaxBounces,
                 Life = SimConfig.BulletLifeTicks,
-                Grace = SimConfig.BulletSpawnGraceTicks,
             };
             return true;
         }
@@ -140,7 +139,6 @@ namespace Tanks.Sim
                 ref Bullet b = ref state.Bullets[i];
                 if (!b.Active) continue;
 
-                if (b.Grace > 0) b.Grace--;
                 if (--b.Life <= 0) { b.Active = false; continue; }
 
                 StepBulletWithReflection(ref b, arena);
@@ -229,7 +227,11 @@ namespace Tanks.Sim
             {
                 ref Tank t = ref state.Tanks[j];
                 if (!t.Alive) continue;
-                if (j == b.Owner && b.Grace > 0) continue; // own shell is harmless until grace expires
+                // Owner is harmless to itself UNTIL the shell ricochets at least once.
+                // This eliminates spawn self-overlap and also stops a faster-than-bullet
+                // dash from catching its own pre-ricochet shell. Ricocheted shells (where
+                // BouncesLeft has been spent) CAN still kill the owner, just like the original.
+                if (j == b.Owner && b.BouncesLeft == SimConfig.BulletMaxBounces) continue;
 
                 if (Fixed.Abs(b.X - t.X) <= reach && Fixed.Abs(b.Y - t.Y) <= reach)
                 {

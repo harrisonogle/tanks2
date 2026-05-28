@@ -26,7 +26,6 @@ namespace Tanks.Sim
         public int Owner;
         public int BouncesLeft;
         public int Life;   // ticks remaining
-        public int Grace;  // ticks during which this shell ignores its owner
     }
 
     /// <summary>
@@ -134,7 +133,6 @@ namespace Tanks.Sim
                 h = Mix(h, b.Owner);
                 h = Mix(h, b.BouncesLeft);
                 h = Mix(h, b.Life);
-                h = Mix(h, b.Grace);
             }
             return h;
         }

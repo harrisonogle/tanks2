@@ -188,7 +188,6 @@ namespace Tanks.Tests
                 Owner = 0,
                 BouncesLeft = SimConfig.BulletMaxBounces,
                 Life = SimConfig.BulletLifeTicks,
-                Grace = 0,
             };
 
             int bounceCount = 0;
@@ -269,6 +268,53 @@ namespace Tanks.Tests
             Simulation.Tick(s, arena, Both(dashAndRight, PlayerInput.None));
             Assert.That(s.Tanks[0].DashCooldown, Is.LessThan(SimConfig.DashCooldownTicks),
                 "second dash within cooldown should be ignored");
+        }
+
+        [Test]
+        public void DashingIntoOwnPreRicochetBulletIsSafe()
+        {
+            // The exact case this rule exists for: P0 fires AND dashes in the same direction
+            // on the same tick. Dash speed (3x normal) > bullet speed, so the tank overtakes
+            // its own shell — which under the old grace-tick rule killed P0 around tick 5.
+            // Under the new rule (owner immune until the shell ricochets), P0 sails through.
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+
+            Simulation.Tick(s, arena, Both(
+                new PlayerInput(InputButtons.Right | InputButtons.Fire | InputButtons.Dash),
+                PlayerInput.None));
+
+            // Hold Right for the rest of the dash window and a few normal-speed ticks beyond.
+            // 15 ticks total is well past the dash window and well before the shell reaches the
+            // left pillar (~tick 20+), where it would bounce and become deadly to its owner.
+            for (int t = 1; t < 15; t++)
+                Simulation.Tick(s, arena, Both(new PlayerInput(InputButtons.Right), PlayerInput.None));
+
+            Assert.That(s.Tanks[0].Alive, Is.True,
+                "owner should survive its own non-ricocheted shell while dashing into it");
+        }
+
+        [Test]
+        public void OwnRicochetingBulletCanStillKillOwner()
+        {
+            // The other side of the rule: ricochets still count. Fire forward, keep walking
+            // forward at normal speed; the shell hits the left pillar at x=10, bounces back,
+            // and meets the (still-advancing) tank. We should die.
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+
+            Simulation.Tick(s, arena, Both(
+                new PlayerInput(InputButtons.Right | InputButtons.Fire),
+                PlayerInput.None));
+
+            int diedAtTick = -1;
+            for (int t = 1; t < 200; t++)
+            {
+                Simulation.Tick(s, arena, Both(new PlayerInput(InputButtons.Right), PlayerInput.None));
+                if (!s.Tanks[0].Alive) { diedAtTick = t; break; }
+            }
+            Assert.That(diedAtTick, Is.GreaterThan(0),
+                "owner should eventually be killed by its own ricocheted shell");
         }
     }
 }
