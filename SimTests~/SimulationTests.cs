@@ -10,16 +10,19 @@ namespace Tanks.Tests
         private static PlayerInput Btn(InputButtons b) => new PlayerInput(b);
 
         [Test]
-        public void TankMovesForwardAlongFacing()
+        public void ForwardInputMovesTankInPositiveYRegardlessOfBody()
         {
             var arena = Arena.CreateDefault();
             var s = GameState.CreateInitial();
-            Fixed startX = s.Tanks[0].X; // P0 faces +X
+            Fixed startX = s.Tanks[0].X;
+            Fixed startY = s.Tanks[0].Y;
 
             for (int i = 0; i < 10; i++)
                 Simulation.Tick(s, arena, Both(Btn(InputButtons.Forward), PlayerInput.None));
 
-            Assert.That(s.Tanks[0].X.Raw, Is.GreaterThan(startX.Raw), "P0 should have moved in +X");
+            // 8-way world-space movement: Forward = +Y, never along body facing.
+            Assert.That(s.Tanks[0].Y.Raw, Is.GreaterThan(startY.Raw), "Forward should translate the tank in +Y");
+            Assert.That(s.Tanks[0].X, Is.EqualTo(startX), "Forward only affects Y; X should be unchanged");
         }
 
         [Test]
@@ -28,12 +31,12 @@ namespace Tanks.Tests
             var arena = Arena.CreateDefault();
             var s = GameState.CreateInitial();
 
-            // Drive P0 into the +X wall for a long time.
+            // Drive P0 into the +Y wall for a long time.
             for (int i = 0; i < 2000; i++)
                 Simulation.Tick(s, arena, Both(Btn(InputButtons.Forward), PlayerInput.None));
 
-            Fixed maxX = arena.Width - SimConfig.TankRadius;
-            Assert.That(s.Tanks[0].X.Raw, Is.LessThanOrEqualTo(maxX.Raw + 2), "tank should not leave the arena");
+            Fixed maxY = arena.Height - SimConfig.TankRadius;
+            Assert.That(s.Tanks[0].Y.Raw, Is.LessThanOrEqualTo(maxY.Raw + 2), "tank should not leave the arena");
         }
 
         [Test]
@@ -109,6 +112,59 @@ namespace Tanks.Tests
             // cos(90°) is exactly 0 in the lookup table for a quarter turn, so VX is exactly 0.
             Assert.That(s.Bullets[idx].VY.Raw, Is.GreaterThan(0), "shell should travel in +Y (turret aim)");
             Assert.That(s.Bullets[idx].VX.Raw, Is.EqualTo(0), "shell VX should be zero for a 90° aim");
+        }
+
+        [Test]
+        public void DiagonalMovementSpeedMatchesCardinalSpeed()
+        {
+            var arena = Arena.CreateDefault();
+
+            // Cardinal run: Right for N ticks.
+            var sCardinal = GameState.CreateInitial();
+            Fixed cardStartX = sCardinal.Tanks[0].X;
+            for (int i = 0; i < 30; i++)
+                Simulation.Tick(sCardinal, arena, Both(Btn(InputButtons.Right), PlayerInput.None));
+            Fixed cardinalDist = sCardinal.Tanks[0].X - cardStartX;
+
+            // Diagonal run: Right + Forward for the same N ticks. Distance traveled (the
+            // hypotenuse) should equal the cardinal distance — that's what 1/sqrt(2)
+            // per-axis scaling buys us.
+            var sDiag = GameState.CreateInitial();
+            Fixed diagStartX = sDiag.Tanks[0].X;
+            Fixed diagStartY = sDiag.Tanks[0].Y;
+            for (int i = 0; i < 30; i++)
+                Simulation.Tick(sDiag, arena, Both(Btn(InputButtons.Right | InputButtons.Forward), PlayerInput.None));
+            Fixed dx = sDiag.Tanks[0].X - diagStartX;
+            Fixed dy = sDiag.Tanks[0].Y - diagStartY;
+            Fixed diagDist = Fixed.Sqrt(dx * dx + dy * dy);
+
+            // Allow ~1% slack for fixed-point quantization of the 1/sqrt(2) constant.
+            float ratio = diagDist.ToFloat() / cardinalDist.ToFloat();
+            Assert.That(ratio, Is.EqualTo(1f).Within(0.01f),
+                $"diagonal {diagDist} should ~= cardinal {cardinalDist}");
+        }
+
+        [Test]
+        public void BodyAngleSnapsToInputDirection()
+        {
+            var arena = Arena.CreateDefault();
+            var s = GameState.CreateInitial();
+
+            // Forward => +Y => AngleCount/4 (90°).
+            Simulation.Tick(s, arena, Both(Btn(InputButtons.Forward), PlayerInput.None));
+            Assert.That(s.Tanks[0].Angle, Is.EqualTo(Trig.AngleCount / 4));
+
+            // Forward + Right => NE => AngleCount/8 (45°).
+            Simulation.Tick(s, arena, Both(Btn(InputButtons.Forward | InputButtons.Right), PlayerInput.None));
+            Assert.That(s.Tanks[0].Angle, Is.EqualTo(Trig.AngleCount / 8));
+
+            // No directional input => body angle holds its last value.
+            Simulation.Tick(s, arena, Both(PlayerInput.None, PlayerInput.None));
+            Assert.That(s.Tanks[0].Angle, Is.EqualTo(Trig.AngleCount / 8));
+
+            // Back + Left => SW => 5 * AngleCount/8 (225°).
+            Simulation.Tick(s, arena, Both(Btn(InputButtons.Back | InputButtons.Left), PlayerInput.None));
+            Assert.That(s.Tanks[0].Angle, Is.EqualTo(5 * Trig.AngleCount / 8));
         }
     }
 }

@@ -34,19 +34,20 @@ namespace Tanks.Sim
                 // adopts it. Balance / turn-speed is the sampler's concern, not the sim's.
                 t.TurretAngle = input.TurretAim;
 
-                // Body rotation
-                if (input.Left) t.Angle = Trig.Normalize(t.Angle + SimConfig.TankTurnSpeed);
-                if (input.Right) t.Angle = Trig.Normalize(t.Angle - SimConfig.TankTurnSpeed);
-
-                // Movement along facing, resolved per-axis against bounds + walls.
-                int moveSign = input.Forward ? 1 : (input.Back ? -1 : 0);
-                if (moveSign != 0)
+                // Direct 8-way movement in WORLD space (faithful to original Tanks — NOT
+                // tank-controls). Forward/Back/Left/Right bits map to +Y/-Y/-X/+X; the body
+                // visually snaps to face the input direction (no rotation inertia yet).
+                int wx = (input.Right ? 1 : 0) - (input.Left ? 1 : 0);
+                int wy = (input.Forward ? 1 : 0) - (input.Back ? 1 : 0);
+                if (wx != 0 || wy != 0)
                 {
-                    FixVec2 dir = Trig.Direction(t.Angle);
-                    Fixed dx = dir.X * SimConfig.TankMoveSpeed * moveSign;
-                    Fixed dy = dir.Y * SimConfig.TankMoveSpeed * moveSign;
+                    // Scale per-axis on diagonals so total speed equals cardinal speed.
+                    Fixed perAxis = (wx != 0 && wy != 0) ? SimConfig.DiagonalMoveSpeed : SimConfig.TankMoveSpeed;
+                    Fixed dx = perAxis * wx;
+                    Fixed dy = perAxis * wy;
                     t.X = ResolveTankX(t.X + dx, t.Y, arena);
                     t.Y = ResolveTankY(t.X, t.Y + dy, arena);
+                    t.Angle = AngleFromInputDir(wx, wy);
                 }
 
                 // Firing
@@ -194,6 +195,19 @@ namespace Tanks.Sim
                     return;
                 }
             }
+        }
+
+        /// <summary>
+        /// Body facing for an 8-way input vector. Each component is in {-1, 0, +1}; the caller
+        /// guards against (0, 0). Returns one of 8 angle indices snapped to 45° steps (CCW from +X).
+        /// </summary>
+        private static int AngleFromInputDir(int wx, int wy)
+        {
+            int octant =
+                wy > 0 ? (wx > 0 ? 1 : (wx < 0 ? 3 : 2)) :
+                wy < 0 ? (wx > 0 ? 7 : (wx < 0 ? 5 : 6)) :
+                (wx > 0 ? 0 : 4);
+            return octant * (Trig.AngleCount / 8);
         }
     }
 }

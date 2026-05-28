@@ -48,8 +48,8 @@ namespace Tanks.Game
             }
 
             GUILayout.Space(8);
-            GUILayout.Label("P1 (blue): W/A/S/D move+turn body, Q/E rotate turret, Space fire");
-            GUILayout.Label("P2 (red):  Arrows move+turn body, , / . rotate turret, Enter fire");
+            GUILayout.Label("P1 (blue): W/A/S/D move (8-way), Q/E rotate turret, Space fire");
+            GUILayout.Label("P2 (red):  Arrows move (8-way), , / . rotate turret, Enter fire");
             GUILayout.Label("R: reset match");
 
             GUILayout.Space(8);

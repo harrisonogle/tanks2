@@ -50,7 +50,7 @@ Assets/Tanks/
                         SimRunner (fixed-tick loop + history + the SEAM),
                         GameView (primitives), DebugHud (IMGUI), InputSampler
 SimTests~/            — standalone `dotnet test` project linking Sim/Net source.
-                        21 tests covering math, gameplay, determinism, network seam.
+                        23 tests covering math, gameplay, determinism, network seam.
                         Run with: dotnet test (from repo root or that folder)
 ```
 
@@ -80,10 +80,13 @@ yourself wanting to reach for `UnityEngine` or `float` inside Sim/Net, stop.
 
 Already wired, working, and tested:
 - The deterministic sim. Two tanks driving and shooting, bullets bouncing off walls,
-  one-shot kill. **Turret aims independently of body** — absolute angle, quantized to
-  11 bits (2048 steps); the input layer maintains the angle locally, and the integer
-  rides the wire. **Inputs come from the Unity Input System** (`com.unity.inputsystem`):
-  P1 = `Gamepad.all[0]` if connected else WASD+Q/E keyboard; P2 = `Gamepad.all[1]` else
+  one-shot kill. **Movement is 8-way in world space** (faithful to original *Tanks* —
+  not tank-controls). The four direction bits map to ±Y/±X; the body visually snaps to
+  face the input direction; diagonals are scaled by `1/√2` so total speed stays constant.
+  **Turret aims independently of body** — absolute angle, quantized to 11 bits (2048
+  steps); the input layer maintains the angle locally and the integer rides the wire.
+  **Inputs come from the Unity Input System** (`com.unity.inputsystem`): P1 =
+  `Gamepad.all[0]` if connected else WASD+Q/E keyboard; P2 = `Gamepad.all[1]` else
   arrows+,/. keyboard. Right stick → quantized turret aim; A/Cross or right trigger →
   fire. 60-tick fixed step. `R` resets the match.
 - `SimRunner` ticks at 60 Hz with frame-rate independence, hashes every state, and
@@ -342,7 +345,7 @@ process and the snapshot/reconciliation/interpolation loop.
 
 1. Both: read this file. (~10 min)
 2. Both: skim `CLAUDE.md` and `Assets/Tanks/Sim/Simulation.cs` + `SimRunner.cs`. (~10 min)
-3. Run `dotnet test` from the repo root — confirm 21/21. (~1 min)
+3. Run `dotnet test` from the repo root — confirm 23/23. (~1 min)
 4. Open in Unity, press Play, drive the tanks a few seconds. (~2 min)
 5. Open `SimRunner.cs` to the `===== NETCODE SEAM =====` block. Start on M1.
 

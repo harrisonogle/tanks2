@@ -22,10 +22,6 @@ namespace Tanks.Game
     /// </summary>
     public static class InputSampler
     {
-        // Per-tick angle delta when a keyboard turret-turn key is held. Matched to body turn
-        // speed so both feel equally responsive. Gamepads bypass this — they set absolute aim.
-        private const int KeyboardTurretTurnSpeed = SimConfig.TankTurnSpeed;
-
         // Below these thresholds the stick is treated as neutral.
         private const float MoveDeadzone = 0.4f;
         private const float AimDeadzoneSqr = 0.3f * 0.3f;
@@ -100,8 +96,8 @@ namespace Tanks.Game
             if (kb[Key.Space].isPressed) b |= InputButtons.Fire;
 
             // Q / E rotate the turret in WORLD space (independent of body).
-            if (kb[Key.Q].isPressed) storedTurret = Trig.Normalize(storedTurret + KeyboardTurretTurnSpeed);
-            if (kb[Key.E].isPressed) storedTurret = Trig.Normalize(storedTurret - KeyboardTurretTurnSpeed);
+            if (kb[Key.Q].isPressed) storedTurret = Trig.Normalize(storedTurret + SimConfig.KeyboardTurretTurnSpeed);
+            if (kb[Key.E].isPressed) storedTurret = Trig.Normalize(storedTurret - SimConfig.KeyboardTurretTurnSpeed);
 
             return new PlayerInput(b, storedTurret);
         }
@@ -118,8 +114,8 @@ namespace Tanks.Game
             if (kb[Key.RightArrow].isPressed) b |= InputButtons.Right;
             if (kb[Key.Enter].isPressed) b |= InputButtons.Fire;
 
-            if (kb[Key.Comma].isPressed) storedTurret = Trig.Normalize(storedTurret + KeyboardTurretTurnSpeed);
-            if (kb[Key.Period].isPressed) storedTurret = Trig.Normalize(storedTurret - KeyboardTurretTurnSpeed);
+            if (kb[Key.Comma].isPressed) storedTurret = Trig.Normalize(storedTurret + SimConfig.KeyboardTurretTurnSpeed);
+            if (kb[Key.Period].isPressed) storedTurret = Trig.Normalize(storedTurret - SimConfig.KeyboardTurretTurnSpeed);
 
             return new PlayerInput(b, storedTurret);
         }

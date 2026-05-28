@@ -18,7 +18,9 @@ namespace Tanks.Sim
         // Tank
         public static readonly Fixed TankRadius = Fixed.FromFloat(0.6f);     // treated as a square half-extent for collision
         public static readonly Fixed TankMoveSpeed = Fixed.FromFloat(0.12f); // units per tick (~7.2 u/s)
-        public const int TankTurnSpeed = 24;                                 // angle units per tick (~253 deg/s)
+        // Per-axis speed for diagonals so total speed matches cardinal (TankMoveSpeed * 1/sqrt(2)).
+        public static readonly Fixed DiagonalMoveSpeed = TankMoveSpeed * Fixed.FromFloat(0.70710678f);
+        public const int KeyboardTurretTurnSpeed = 24;                       // angle units per tick (~253 deg/s); used by the keyboard turret-aim fallback
         public const int TankMaxHealth = 1;                                  // one-shot kill, classic Tanks
 
         // Bullet

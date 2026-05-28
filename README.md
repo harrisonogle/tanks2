@@ -41,14 +41,17 @@ for lockstep and rollback:
 
 ### Controls (local 2-player sandbox)
 
-**Gamepad** (Xbox or PlayStation, auto-detected when connected): left stick to drive, right
-stick to aim the turret, A/Cross or right trigger to fire. P1 binds to the first connected
-gamepad, P2 to the second.
+Movement is 8-way in world space (faithful to original *Tanks* — not tank-controls).
+The body visually rotates to face the input direction; the turret aims independently.
+
+**Gamepad** (Xbox or PlayStation, auto-detected when connected): left stick to drive,
+right stick to aim the turret, A/Cross or right trigger to fire. P1 binds to the first
+connected gamepad, P2 to the second.
 
 **Keyboard** (fallback for whichever slot has no gamepad):
 
-- **P1 (blue):** `W`/`A`/`S`/`D` move & turn body, `Q`/`E` rotate turret, `Space` fire
-- **P2 (red):** Arrow keys move & turn body, `,` / `.` rotate turret, `Enter` fire
+- **P1 (blue):** `W`/`A`/`S`/`D` move (8 directions), `Q`/`E` rotate turret, `Space` fire
+- **P2 (red):** Arrow keys move (8 directions), `,` / `.` rotate turret, `Enter` fire
 
 **`R`:** reset the match (works from any device)
 
