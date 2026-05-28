@@ -68,7 +68,7 @@ namespace Tanks.Game
                 float ts = Trig.Sin(t.TurretAngle).ToFloat();
                 Vector3 turretDir = new Vector3(tc, 0f, ts);
                 Vector3 bodyPos = ToWorld(t.X, t.Y, 0.35f);
-                barrel.position = bodyPos + turretDir * 0.55f;
+                barrel.position = bodyPos + turretDir * 0.80f;
                 barrel.rotation = Quaternion.LookRotation(turretDir, Vector3.up);
             }
 
@@ -150,7 +150,7 @@ namespace Tanks.Game
                 // Barrel: SIBLING of root (not a child), since it rotates with TurretAngle
                 // independently. Its world transform is set each frame in LateUpdate.
                 var barrel = CreateBox($"Tank{i}-Barrel", BarrelColor);
-                barrel.localScale = new Vector3(0.18f, 0.18f, 0.9f);
+                barrel.localScale = new Vector3(0.18f, 0.18f, 1.4f);
 
                 _tankRoots[i] = root;
                 _tankBarrels[i] = barrel;
