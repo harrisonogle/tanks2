@@ -37,6 +37,22 @@ namespace Tanks.Game
             s_p2Turret = SimConfig.SpawnAngle(1);
         }
 
+        /// <summary>
+        /// Edge-triggered reset signal: true on the frame the keyboard `R` or any connected
+        /// gamepad's Start/Options button is first pressed.
+        /// </summary>
+        public static bool IsResetRequested()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && kb[Key.R].wasPressedThisFrame) return true;
+
+            foreach (var pad in Gamepad.all)
+            {
+                if (pad.startButton.wasPressedThisFrame) return true;
+            }
+            return false;
+        }
+
         public static PlayerInput SampleP1()
         {
             var pads = Gamepad.all;

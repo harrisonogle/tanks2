@@ -50,7 +50,7 @@ namespace Tanks.Game
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.R))
+            if (InputSampler.IsResetRequested())
                 ResetMatch();
 
             double step = 1.0 / TickRate;

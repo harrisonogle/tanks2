@@ -53,7 +53,7 @@ connected gamepad, P2 to the second.
 - **P1 (blue):** `W`/`A`/`S`/`D` move (8 directions), `Q`/`E` rotate turret, `Space` fire
 - **P2 (red):** Arrow keys move (8 directions), `,` / `.` rotate turret, `Enter` fire
 
-**`R`:** reset the match (works from any device)
+**`R`** (keyboard) or **Start / Options** (gamepad): reset the match
 
 ## Run the tests (no Unity needed)
 
