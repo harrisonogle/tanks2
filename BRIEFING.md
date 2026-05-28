@@ -89,7 +89,8 @@ Already wired, working, and tested:
   `Gamepad.all[0]` if connected else WASD+Q/E keyboard; P2 = `Gamepad.all[1]` else
   arrows+,/. keyboard. Right stick → quantized turret aim; A/Cross or right trigger →
   fire; **left trigger / Shift → dash** (3× speed for 6 ticks, 1 s cooldown; edge-triggered
-  by the sampler). 60-tick fixed step. `R` or gamepad **Start/Options** resets the match.
+  by the sampler). 60-tick fixed step. `R` or gamepad **Start/Options** resets the match;
+  `H` or gamepad **Select** toggles the debug HUD (default hidden).
 - `SimRunner` ticks at 60 Hz with frame-rate independence, hashes every state, and
   records snapshots into a 256-tick `StateHistory` ring buffer.
 - `InProcessNetwork` — two endpoints, send/receive bytes, tunable

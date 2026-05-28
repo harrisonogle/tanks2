@@ -55,6 +55,8 @@ P1 binds to the first connected gamepad, P2 to the second.
 
 **`R`** (keyboard) or **Start / Options** (gamepad): reset the match
 
+**`H`** (keyboard) or **Select / View / Share** (gamepad): toggle the debug HUD (default hidden)
+
 ## Run the tests (no Unity needed)
 
 ```

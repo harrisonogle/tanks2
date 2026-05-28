@@ -61,6 +61,22 @@ namespace Tanks.Game
             return false;
         }
 
+        /// <summary>
+        /// Edge-triggered HUD-toggle signal: true on the frame the keyboard `H` or any connected
+        /// gamepad's Select / View / Share button is first pressed.
+        /// </summary>
+        public static bool IsHudToggleRequested()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && kb[Key.H].wasPressedThisFrame) return true;
+
+            foreach (var pad in Gamepad.all)
+            {
+                if (pad.selectButton.wasPressedThisFrame) return true;
+            }
+            return false;
+        }
+
         public static PlayerInput SampleP1()
         {
             var pads = Gamepad.all;

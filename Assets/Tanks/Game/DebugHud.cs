@@ -14,11 +14,19 @@ namespace Tanks.Game
     public sealed class DebugHud : MonoBehaviour
     {
         private SimRunner _runner;
+        private bool _visible;   // default false (hidden); H or gamepad Select toggles
 
         private void Start() => _runner = GetComponent<SimRunner>();
 
+        private void Update()
+        {
+            if (InputSampler.IsHudToggleRequested())
+                _visible = !_visible;
+        }
+
         private void OnGUI()
         {
+            if (!_visible) return;
             var state = _runner != null ? _runner.State : null;
             if (state == null) return;
 
@@ -55,6 +63,7 @@ namespace Tanks.Game
             GUILayout.Label("P1 (blue): WASD move, Q/E turret, Space fire, LShift dash");
             GUILayout.Label("P2 (red):  Arrows move, , / . turret, Enter fire, RShift dash");
             GUILayout.Label("R (keyboard) or Start/Options (gamepad): reset match");
+            GUILayout.Label("H (keyboard) or Select (gamepad): hide this HUD");
 
             GUILayout.Space(8);
             GUILayout.Label("Netcode seam ready in SimRunner (local only for now).");
