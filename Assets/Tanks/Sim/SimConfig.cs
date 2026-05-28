@@ -8,7 +8,7 @@ namespace Tanks.Sim
     {
         public const int TickRate = 60;            // simulation ticks per second
         public const int PlayerCount = 2;          // 1v1
-        public const int MaxBullets = 16;          // shared bullet pool size
+        public const int MaxBullets = 32;          // shared bullet pool size
         public const int MaxBulletsPerPlayer = 5;  // max simultaneous shells per tank (Tanks-style)
 
         // Arena (origin at bottom-left; units are arbitrary "meters").
@@ -17,24 +17,24 @@ namespace Tanks.Sim
 
         // Tank
         public static readonly Fixed TankRadius = Fixed.FromFloat(0.6f);     // treated as a square half-extent for collision
-        public static readonly Fixed TankMoveSpeed = Fixed.FromFloat(0.12f); // units per tick (~7.2 u/s)
+        public static readonly Fixed TankMoveSpeed = Fixed.FromFloat(0.12f); // units per tick
         // Per-axis speed for diagonals so total speed matches cardinal (TankMoveSpeed * 1/sqrt(2)).
         public static readonly Fixed DiagonalMoveSpeed = TankMoveSpeed * Fixed.FromFloat(0.70710678f);
         public const int KeyboardTurretTurnSpeed = 24;                       // angle units per tick (~253 deg/s); used by the keyboard turret-aim fallback
         public const int TankMaxHealth = 1;                                  // one-shot kill, classic Tanks
 
         // Dash
-        public const int DashDurationTicks = 6;                              // length of the speed burst when you trigger a dash (~100 ms at 60 Hz)
-        public const int DashCooldownTicks = 60;                             // minimum ticks between dashes (1 second)
+        public const int DashDurationTicks = 9;                              // length of the speed burst when you trigger a dash (~100 ms at 60 Hz)
+        public const int DashCooldownTicks = 15;                             // minimum ticks between dashes
         public const int DashSpeedMultiplier = 3;                            // movement speed factor while DashTicks > 0
 
         // Bullet
-        public static readonly Fixed BulletSpeed = Fixed.FromFloat(0.28f);   // units per tick (~16.8 u/s)
+        public static readonly Fixed BulletSpeed = Fixed.FromFloat(0.20f);   // units per tick
         public static readonly Fixed BulletRadius = Fixed.FromFloat(0.12f);
         public const int BulletMaxBounces = 1;                               // single ricochet; the next surface contact detonates the shell (classic Tanks!)
         public const int BulletLifeTicks = 60 * 8;
         public const int BulletSpawnGraceTicks = 6;                          // ticks during which a shell ignores its owner
-        public const int FireCooldownTicks = 24;
+        public const int FireCooldownTicks = 12;
 
         // Spawns: P0 on the left facing +X, P1 on the right facing -X.
         public static FixVec2 SpawnPosition(int player)
