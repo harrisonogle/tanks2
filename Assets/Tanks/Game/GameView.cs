@@ -13,6 +13,13 @@ namespace Tanks.Game
     /// </summary>
     public sealed class GameView : MonoBehaviour
     {
+        /// <summary>
+        /// Unity layer for everything this view spawns. Both peers' objects share the same
+        /// world coordinates; each peer's camera culls to its own layer so the two copies
+        /// don't render on top of each other. Set by Bootstrap before Start runs.
+        /// </summary>
+        public int Layer;
+
         private static readonly Color P0Color = new Color(0.30f, 0.55f, 1.00f);
         private static readonly Color P1Color = new Color(1.00f, 0.40f, 0.35f);
         private static readonly Color WallColor = new Color(0.45f, 0.45f, 0.50f);
@@ -132,6 +139,7 @@ namespace Tanks.Game
                 // Empty root carries the body's facing; the body cube and the front marker hang
                 // off it. The root stays unscaled so each child's scale lives in clean units.
                 var root = new GameObject($"Tank{i}").transform;
+                root.gameObject.layer = Layer; // layer is per-object, not inherited — see CreatePrimitive
 
                 // Visible body cube (matches the sim's collision footprint exactly).
                 var body = CreateBox($"Tank{i}-Body", i == 0 ? P0Color : P1Color);
@@ -170,16 +178,19 @@ namespace Tanks.Game
             }
         }
 
-        private static Transform CreateBox(string name, Color color)
+        private Transform CreateBox(string name, Color color)
             => CreatePrimitive(PrimitiveType.Cube, name, color);
 
-        private static Transform CreateSphere(string name, Color color)
+        private Transform CreateSphere(string name, Color color)
             => CreatePrimitive(PrimitiveType.Sphere, name, color);
 
-        private static Transform CreatePrimitive(PrimitiveType type, string name, Color color)
+        private Transform CreatePrimitive(PrimitiveType type, string name, Color color)
         {
             var go = GameObject.CreatePrimitive(type);
             go.name = name;
+            // Unity does NOT propagate layer to runtime-created children — set it on
+            // every object here so nothing leaks into the other peer's camera.
+            go.layer = Layer;
             // We do our own collision in the sim; drop the auto-added collider.
             var col = go.GetComponent<Collider>();
             if (col != null) Destroy(col);
