@@ -4,6 +4,18 @@
 > sketches, and the traps that aren't written down anywhere. If the meeting stalls, find
 > your symptom in §6. Read `STUDY_GUIDE.md` first if the codebase isn't fresh.
 
+**This branch (`meeting-prep`) carries a worked reference implementation** of everything
+below — one commit per step, in the same order as this plan, with the rationale in each
+commit message. Use it as the answer key when stuck:
+
+```
+git log --oneline --reverse main..meeting-prep    # the recipe, step by step
+git show <sha>                                    # one step's full diff + why
+git diff main...meeting-prep -- <file>            # a single file's full journey
+```
+
+The sketches below track the committed code closely; where they differ, the commits win.
+
 **Shape of the session:** M1 wiring (~45 min) → M2 lockstep (~2–2.5 h) → stretch into M3.
 Verify with `dotnet test` after every Sim/Net change (29/29 green today), and with
 Play-mode eyeballs for the Game layer.
@@ -272,91 +284,65 @@ get round trip, `Has` false for wrong tick, slot reuse after 256, `Clear`.
 ### Step 3 (Track B) — headless lockstep-under-fire test (write it BEFORE the Unity wiring)
 
 This is your binary canary for the whole milestone, runnable in seconds without Unity —
-and it doubles as the reference implementation for Step 4. New `SimTests~/LockstepTests.cs`:
+and it doubles as the reference implementation for Step 4. The full version is committed
+as `SimTests~/LockstepTests.cs` (two tests: clean wire at full rate; latency 6 / jitter 3
+/ 5% loss staying bit-identical across 2000 net ticks).
 
-```csharp
-[Test]
-public void LockstepOverLossyLatentWireStaysInSync()
-{
-    var net = new InProcessNetwork(latencyTicks: 6, jitterTicks: 3, lossChance: 0.05f);
-    var arena = Arena.CreateDefault();
-    const uint DELAY = 3;
+Per peer, per net tick: **drain → schedule → resend window → advance (≤5)**. Three
+hard-won details — all three were found by *running* this test, so don't skip it:
 
-    var state = new[] { GameState.CreateInitial(), GameState.CreateInitial() };
-    var ring  = new[] { new InputRing(), new InputRing() };
-    var lastScheduled = new uint[] { DELAY, DELAY };
-    var hashes = new[] { new Dictionary<uint, ulong>(), new Dictionary<uint, ulong>() };
-    var inputs = new PlayerInput[2];
-    ITransport[] tp = { net.EndpointA, net.EndpointB };
+1. **Scheduling must be a `while`, not an `if`** — keep local inputs scheduled through
+   `next + DELAY` for EVERY tick index. After a multi-tick advance, `next` jumps several
+   ticks at once; an `if` schedules only one input, and the skipped ticks stall both
+   peers forever. (The first run of this test froze at exactly tick 4 this way.)
+2. **Resend a window, don't send once:** every net tick, re-send all scheduled ticks
+   from `next − DELAY − 1` through `lastScheduled` (~8 packets). Peers can't drift more
+   than `DELAY+1` ticks apart, so a dropped packet is always retransmitted while still
+   needed — loss recovery with zero ack machinery. A fixed "last 3" window can deadlock:
+   when the peer stalls and you race ahead, the tick it's missing falls out of your
+   window and is never sent again.
+3. **Lockstep is correct-but-slow when latency > delay.** Throughput ≈
+   `(DELAY+1) / (DELAY+1 + transit)` — at latency 6 that's ~57% of real time, and the
+   test asserts ~1200/2000 ticks of progress with hashes perfect. Don't "fix" the
+   slowness; it's the measured pain that justifies M3.
 
-    for (int p = 0; p < 2; p++)                       // pre-seed the delay window
-        for (uint t = 1; t <= DELAY; t++)
-            { ring[p].Record(t, 0, PlayerInput.None); ring[p].Record(t, 1, PlayerInput.None); }
-
-    for (uint netTick = 1; netTick <= 2000; netTick++)
-    {
-        net.Poll(netTick);
-        for (int p = 0; p < 2; p++)
-        {
-            while (tp[p].TryReceive(out var pkt))     // drain
-            {
-                InputCodec.Read(pkt, out uint t, out int who, out PlayerInput pi);
-                ring[p].Record(t, who, pi);
-            }
-            uint scheduled = state[p].Tick + 1 + DELAY;
-            if (scheduled > lastScheduled[p])          // schedule each tick exactly once
-            {
-                ring[p].Record(scheduled, p, ScriptedInput(p, scheduled));
-                lastScheduled[p] = scheduled;
-            }
-            for (uint t = lastScheduled[p] - 2; t <= lastScheduled[p]; t++)   // redundant resend ×3
-                tp[p].Send(InputCodec.ToBytes(t, p, ring[p].Get(t, p)));
-
-            for (int step = 0; step < 5; step++)       // advance while the gate allows
-            {
-                uint next = state[p].Tick + 1;
-                if (!ring[p].Has(next, 0) || !ring[p].Has(next, 1)) break;
-                inputs[0] = ring[p].Get(next, 0); inputs[1] = ring[p].Get(next, 1);
-                Simulation.Tick(state[p], arena, inputs);
-                hashes[p][state[p].Tick] = state[p].Hash();
-            }
-        }
-    }
-
-    uint confirmed = Math.Min(state[0].Tick, state[1].Tick);
-    Assert.That(confirmed, Is.GreaterThan(1500), "lockstep barely progressed — scheduling bug?");
-    for (uint t = 1; t <= confirmed; t++)
-        Assert.That(hashes[1][t], Is.EqualTo(hashes[0][t]), $"desync at tick {t}");
-}
-```
-
-(Reuse a `ScriptedInput` like the ones already in the test files.) When this is green,
-M2's logic is correct — the Unity wiring is then mechanical.
+When this is green, M2's logic is correct — the Unity wiring is then mechanical.
 
 ### Step 4 (merge) — rewire `SimRunner.StepOnce` into the lockstep loop
 
-Order inside each fixed step: **schedule-once → resend → gate → advance**. Drain stays
+Order inside each fixed step: **schedule → resend window → gate → advance**. Drain stays
 in `Update` before the step loop (the pump's `DefaultExecutionOrder(-100)` already
 polled this frame).
 
 ```csharp
-private uint _lastScheduledTick;   // = INPUT_DELAY after reset
+private uint _lastScheduledTick;   // = InputDelay after reset
 public int Stalls { get; private set; }
 
 private bool TryStepOnce()
 {
     uint next = State.Tick + 1;
 
-    uint scheduled = next + InputDelay;
-    if (scheduled > _lastScheduledTick)               // sample each tick EXACTLY once
+    // Schedule-once, while-form (Step 3, lesson 1): every tick through next+InputDelay
+    // gets EXACTLY one sampled input — never re-sample a stalled tick.
+    uint targetScheduled = next + InputDelay;
+    if (_lastScheduledTick < targetScheduled)
     {
         PlayerInput local = LocalPlayer == 0 ? InputSampler.SampleP1() : InputSampler.SampleP2();
-        _ring.Record(scheduled, LocalPlayer, local);
-        _lastScheduledTick = scheduled;
+        while (_lastScheduledTick < targetScheduled)
+        {
+            _lastScheduledTick++;
+            _ring.Record(_lastScheduledTick, LocalPlayer, local);
+        }
     }
-    for (uint t = _lastScheduledTick - 2; t <= _lastScheduledTick; t++)   // loss armor
-        Transport.Send(InputCodec.ToBytes(t, LocalPlayer, _ring.Get(t, LocalPlayer),
-                                          State.Tick, LastHash));         // hash piggyback
+
+    // Resend window (Step 3, lesson 2), hash piggyback on every packet.
+    uint windowStart = next > InputDelay + 1 ? next - InputDelay - 1 : 1u;
+    Span<byte> buf = stackalloc byte[InputCodec.MessageSize];
+    for (uint t = windowStart; t <= _lastScheduledTick; t++)
+    {
+        InputCodec.Write(buf, t, LocalPlayer, _ring.Get(t, LocalPlayer), State.Tick, LastHash);
+        Transport.Send(buf);
+    }
 
     if (!_ring.Has(next, 0) || !_ring.Has(next, 1)) { Stalls++; return false; }
 
@@ -376,15 +362,17 @@ fast-forward.
 **The desync trap this design dodges:** if you re-sample on a stalled frame and
 overwrite the same scheduled slot, the receiver may consume the *first* value while you
 later simulate with the *second* → desync that only appears under stall. Sample once per
-tick index; on stalled frames you only *re-send* the already-recorded value. The ×3
-redundant send is what makes 5% loss survivable with no ack protocol (~1.4 kB/s — free).
+tick index; stalled frames only *re-send* already-recorded values straight from the ring.
 
 ### Step 5 — drain with guards + desync alarm
 
 ```csharp
-private uint _peerHashTick; private ulong _peerHash;
-public bool HashesAgree { get; private set; } = true;
-public uint PeerHashTick => _peerHashTick;
+public bool HashesAgree { get; private set; } = true;   // latches false until reset
+public uint PeerHashTick { get; private set; }
+public ulong PeerHash { get; private set; }
+private bool _peerHashSeen; // the peer's FIRST report legitimately has hashTick == 0, so
+                            // "no report yet" needs its own flag — comparing the unseen
+                            // default (0, 0) against history false-alarms at startup
 
 private void DrainNetwork()
 {
@@ -394,16 +382,20 @@ private void DrainNetwork()
                         out uint hashTick, out ulong hash);
         PacketsReceived++;
         if (player == LocalPlayer) continue;                    // belt & braces
-        if (tick > State.Tick + InputDelay + 64) continue;      // stale-future guard (see reset)
+        if (tick > State.Tick + InputDelay + 64) continue;      // stale-future guard (see Step 6)
         _ring.Record(tick, player, input);
-        if (hashTick > _peerHashTick) { _peerHashTick = hashTick; _peerHash = hash; }
+        if (!_peerHashSeen || hashTick > PeerHashTick)
+        {
+            _peerHashSeen = true; PeerHashTick = hashTick; PeerHash = hash;
+        }
     }
 
-    var snap = History.Get(_peerHashTick);                      // null if too old/not yet reached
-    if (snap != null && snap.Hash() != _peerHash)
+    if (!_peerHashSeen || !HashesAgree) return;
+    var snap = History.Get(PeerHashTick);   // null while the peer is ahead of us — try next frame
+    if (snap != null && snap.Hash() != PeerHash)
     {
         HashesAgree = false;
-        Debug.LogError($"DESYNC @tick {_peerHashTick}: mine={snap.Hash():X16} theirs={_peerHash:X16}");
+        Debug.LogError($"DESYNC @tick {PeerHashTick}: mine={snap.Hash():X16} theirs={PeerHash:X16}");
     }
 }
 ```
@@ -416,21 +408,27 @@ box red on mismatch (`GUI.color = Color.red`), `stalls`, `rx/s`. Remember
 
 In-process, both peers see `R` on the same frame, so resets coincide. Per peer:
 `ResetMatch` → `_ring.Clear()`, re-seed ticks `1..INPUT_DELAY` for both players,
-`_lastScheduledTick = InputDelay`, clear `_peerHashTick/_peerHash/HashesAgree`.
+`_lastScheduledTick = InputDelay`, clear the peer-hash state (`HashesAgree`,
+`_peerHashSeen`, tick, hash).
 
 **The time bomb:** packets from *before* the reset are still in flight, stamped with
 huge tick numbers. Without the stale-future guard above, one lands in the fresh ring at
 slot `tick % 256` and detonates as a desync minutes later when the sim reaches that
-tick. The guard (2 lines) kills the whole class. Optionally also add
-`InProcessNetwork.Reset()` (clear `_inFlight` + both inboxes) called once on reset.
+tick. The guard (2 lines) kills the whole class. Belt to those braces:
+`InProcessNetwork.Reset()` (clears `_inFlight` + both inboxes), called once by the
+pump on the reset frame — it runs before the peers (execution order −100), so inboxes
+are clean before anyone drains.
 
-### Step 7 — network knob sliders (top-center, on the pump's GameObject)
+### Step 7 — network knob sliders (bottom-center — top-center would collide with the right peer's HUD)
+
+Committed as `NetworkHud.cs`, on the pump's GameObject, toggled by the same `H`:
 
 ```csharp
-GUILayout.BeginArea(new Rect(Screen.width / 2f - 150, 10, 300, 110), GUI.skin.box);
-GUILayout.Label($"latency {Network.LatencyTicks}t   jitter {Network.JitterTicks}t   loss {Network.LossChance:P0}   in-flight {Network.InFlightCount}");
-Network.LatencyTicks = (int)GUILayout.HorizontalSlider(Network.LatencyTicks, 0, 30);
-Network.JitterTicks  = (int)GUILayout.HorizontalSlider(Network.JitterTicks, 0, 10);
+GUILayout.BeginArea(new Rect(Screen.width / 2f - 170, Screen.height - 130, 340, 120), GUI.skin.box);
+GUILayout.Label($"NETWORK   in-flight: {Network.InFlightCount}");
+GUILayout.Label($"latency {Network.LatencyTicks,2}t   jitter {Network.JitterTicks,2}t   loss {Network.LossChance:P0}");
+Network.LatencyTicks = Mathf.RoundToInt(GUILayout.HorizontalSlider(Network.LatencyTicks, 0f, 30f));
+Network.JitterTicks  = Mathf.RoundToInt(GUILayout.HorizontalSlider(Network.JitterTicks, 0f, 10f));
 Network.LossChance   = GUILayout.HorizontalSlider(Network.LossChance, 0f, 0.3f);
 GUILayout.EndArea();
 ```
@@ -442,8 +440,9 @@ GUILayout.EndArea();
 - [ ] **Hash:** both HUDs show own + peer hash agreeing every confirmed tick, ✓ stays
       green during a full match including kills and resets.
 - [ ] **Stress:** sliders at 12 / 3 / 0.05 → hashes still agree; play visibly stalls.
-      (At latency 12 vs delay 3 it *should* stutter constantly — that pain is M3's
-      motivation, not a bug.)
+      (At latency 12 vs delay 3 expect a HARD slowdown — throughput ≈
+      `(DELAY+1)/(DELAY+1+transit)` ≈ 25% of real time. Correct-but-slow is lockstep
+      working as designed; that pain is M3's motivation, not a bug.)
 - [ ] Headless `LockstepOverLossyLatentWireStaysInSync` green; full suite green.
 - [ ] `R` mid-stress resets cleanly and stays in sync afterward (the §Step-6 guard).
 
@@ -491,6 +490,10 @@ it's the acceptance-critical part.
 - **Sims freeze at tick 3** (or 0) → pre-seed missing, or gate checks `state.Tick`
   instead of `state.Tick + 1`, or you stamped sends with `State.Tick` instead of the
   scheduled tick. Re-read the §Step-0 table.
+- **Sims freeze at tick 4** (just past the seeded window, after a multi-tick first
+  advance) → inputs scheduled with an `if` while the sim advanced several ticks at once;
+  ticks got skipped and nobody ever schedules them. Schedule with a `while` through
+  `next + DELAY` (Step 3, lesson 1 — the reference test hit exactly this).
 - **Desync at tick 1** → one peer pre-seeded `None`, the other didn't, or hash compared
   across different ticks (`Hash()` includes `Tick`).
 - **Sporadic desync only under loss/jitter** → re-sampling on stalled frames (the
@@ -499,8 +502,9 @@ it's the acceptance-critical part.
 - **Desync some seconds after a reset** → in-flight pre-reset packets; see §Step 6.
 - **Hashes "mismatch" but gameplay looks identical** → almost always comparing
   different ticks; print both tick numbers next to the hashes.
-- **Stall never recovers after a drop** → redundant resend missing (a lost packet is
-  never retransmitted, and lockstep waits forever).
+- **Stall never recovers after a drop** → resend window missing or too narrow. It must
+  reach back to `next - DELAY - 1` (Step 3, lesson 2); a "last N" window anchored to
+  `lastScheduled` lets the needed tick fall out when the peers drift apart.
 - **Determinism test fails after your change** → a float or `UnityEngine` type crept
   into Sim/Net, or iteration order changed. Never fix with a clamp; find the cause.
 
