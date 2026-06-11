@@ -34,6 +34,28 @@ namespace Tanks.Tests
         }
 
         [Test]
+        public void CodecRoundTripsHashPiggyback()
+        {
+            var input = new PlayerInput(InputButtons.Dash | InputButtons.Left, turretAim: 2047);
+            var bytes = InputCodec.ToBytes(7_000_000u, 1, input, hashTick: 6_999_990u, hash: 0xDEAD_BEEF_CAFE_F00DUL);
+
+            Assert.That(bytes.Length, Is.EqualTo(InputCodec.MessageSize));
+            InputCodec.Read(bytes, out uint tick, out int player, out PlayerInput decoded,
+                            out uint hashTick, out ulong hash);
+
+            Assert.That(tick, Is.EqualTo(7_000_000u));
+            Assert.That(player, Is.EqualTo(1));
+            Assert.That(decoded, Is.EqualTo(input));
+            Assert.That(hashTick, Is.EqualTo(6_999_990u));
+            Assert.That(hash, Is.EqualTo(0xDEAD_BEEF_CAFE_F00DUL));
+
+            // The hash-less overloads coexist: same bytes, report fields simply ignored.
+            InputCodec.Read(bytes, out uint tick2, out _, out PlayerInput decoded2);
+            Assert.That(tick2, Is.EqualTo(tick));
+            Assert.That(decoded2, Is.EqualTo(decoded));
+        }
+
+        [Test]
         public void ZeroLatencyDeliversImmediately()
         {
             var net = new InProcessNetwork(latencyTicks: 0);
