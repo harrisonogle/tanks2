@@ -30,6 +30,12 @@ namespace Tanks.Game
             camGO.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             camGO.tag = "MainCamera";
 
+            // Audio is silent without exactly one AudioListener in the scene. A hand-authored
+            // scene would carry one on its camera; we have no scene content, so attach one here
+            // unless the (possibly non-empty) host scene already provides it.
+            if (Object.FindAnyObjectByType<AudioListener>() == null)
+                camGO.AddComponent<AudioListener>();
+
             // A single directional light + ambient fill so the primitives aren't black.
             var lightGO = new GameObject("Tanks Light");
             var light = lightGO.AddComponent<Light>();
@@ -37,6 +43,14 @@ namespace Tanks.Game
             light.intensity = 1.0f;
             lightGO.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
             RenderSettings.ambientLight = new Color(0.45f, 0.45f, 0.5f);
+
+            // Looping background music. The clip sits in a "Resources" folder so it can be
+            // loaded by name from code instead of through scene/inspector wiring.
+            var musicGO = new GameObject("Tanks Music");
+            var music = musicGO.AddComponent<AudioSource>();
+            music.clip = Resources.Load<AudioClip>("tanks2");
+            music.loop = true;
+            music.Play();
 
             // The game object: simulation + view + HUD all live here.
             var root = new GameObject("Tanks");
