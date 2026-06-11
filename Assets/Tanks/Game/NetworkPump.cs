@@ -28,6 +28,13 @@ namespace Tanks.Game
         {
             if (Network == null) return; // not wired by Bootstrap yet
 
+            // Match reset: both peers reset this same frame (they see the same keypress);
+            // dropping all traffic here keeps pre-reset packets out of the new match.
+            // Runs before the peers (execution order -100), so their inboxes are clean
+            // by the time they drain.
+            if (InputSampler.IsResetRequested())
+                Network.Reset();
+
             double step = 1.0 / SimConfig.TickRate;
             _accumulator += Time.deltaTime;
             if (_accumulator > 0.25) _accumulator = 0.25; // cap catch-up after a hitch

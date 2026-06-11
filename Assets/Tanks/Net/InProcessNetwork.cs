@@ -106,6 +106,19 @@ namespace Tanks.Net
             return false;
         }
 
+        /// <summary>
+        /// Drop all traffic — in flight and delivered-but-unread. Called on match reset so
+        /// packets stamped with pre-reset tick numbers can't haunt the new match. (The
+        /// receive-side tick guard catches them too; this keeps the link visibly clean.)
+        /// The clock keeps running: delivery timing only ever moves forward.
+        /// </summary>
+        public void Reset()
+        {
+            _inFlight.Clear();
+            _inbox[0].Clear();
+            _inbox[1].Clear();
+        }
+
         /// <summary>Number of packets currently in flight (for HUD/debugging).</summary>
         public int InFlightCount => _inFlight.Count;
 

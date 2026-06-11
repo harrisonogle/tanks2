@@ -81,6 +81,21 @@ namespace Tanks.Tests
         }
 
         [Test]
+        public void ResetDropsInFlightAndInboxTraffic()
+        {
+            var net = new InProcessNetwork(latencyTicks: 5);
+            net.EndpointA.Send(new byte[] { 1 }); // due at tick 5
+            net.Poll(5);                          // ...delivered to B's inbox
+            net.EndpointA.Send(new byte[] { 2 }); // due at tick 10, still in flight
+
+            net.Reset();
+
+            net.Poll(100);
+            Assert.That(net.EndpointB.TryReceive(out _), Is.False, "all pre-reset traffic dropped");
+            Assert.That(net.InFlightCount, Is.EqualTo(0));
+        }
+
+        [Test]
         public void TotalLossDropsEverything()
         {
             var net = new InProcessNetwork(latencyTicks: 0, jitterTicks: 0, lossChance: 1f);
