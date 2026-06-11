@@ -29,10 +29,12 @@ namespace Tanks.Game
             lightGO.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
             RenderSettings.ambientLight = new Color(0.45f, 0.45f, 0.5f);
 
-            // The shared fake network and the pump that drives its delivery clock.
+            // The shared fake network, the pump that drives its delivery clock, and the
+            // slider HUD for degrading the wire live.
             var network = new InProcessNetwork(latencyTicks: 2);
             var netGO = new GameObject("Tanks Network");
             netGO.AddComponent<NetworkPump>().Network = network;
+            netGO.AddComponent<NetworkHud>().Network = network;
 
             // Peer 0 owns P1 on the left half; peer 1 owns P2 on the right half.
             CreatePeer(0, network.EndpointA, new Rect(0f, 0f, 0.5f, 1f), layer: 8);
