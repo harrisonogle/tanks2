@@ -52,6 +52,14 @@ namespace Tanks.Game
         /// <summary>Fixed steps skipped because the remote input hadn't arrived yet.</summary>
         public int Stalls { get; private set; }
 
+        /// <summary>False (latched until reset) once the peer reported a hash that contradicts our history.</summary>
+        public bool HashesAgree { get; private set; } = true;
+        /// <summary>The confirmed tick of the peer's most recent hash report.</summary>
+        public uint PeerHashTick { get; private set; }
+        /// <summary>The peer's reported GameState.Hash() at <see cref="PeerHashTick"/>.</summary>
+        public ulong PeerHash { get; private set; }
+        private bool _peerHashSeen; // distinguishes "no report yet" from a real (0, hash) report
+
         private readonly PlayerInput[] _inputs = new PlayerInput[SimConfig.PlayerCount];
         private double _accumulator;
 
@@ -92,7 +100,8 @@ namespace Tanks.Game
             if (Transport == null) return; // not wired by Bootstrap yet
             while (Transport.TryReceive(out var pkt))
             {
-                InputCodec.Read(pkt, out uint tick, out int player, out PlayerInput input);
+                InputCodec.Read(pkt, out uint tick, out int player, out PlayerInput input,
+                                out uint hashTick, out ulong hash);
                 PacketsReceived++;
                 LastRxTick = tick;
                 LastRxInput = input;
@@ -103,6 +112,33 @@ namespace Tanks.Game
                                                                    // recording it would detonate as a desync
                                                                    // minutes later when the sim reaches it
                 _ring.Record(tick, player, input);
+
+                if (!_peerHashSeen || hashTick > PeerHashTick)
+                {
+                    _peerHashSeen = true;
+                    PeerHashTick = hashTick;
+                    PeerHash = hash;
+                }
+            }
+
+            CheckPeerHash();
+        }
+
+        /// <summary>
+        /// The desync canary, live: compare the peer's most recent reported hash against our
+        /// own history at that tick. The peer may be a few ticks ahead of or behind us — if
+        /// our history doesn't hold that tick (yet, or anymore), skip and check next frame.
+        /// </summary>
+        private void CheckPeerHash()
+        {
+            if (!_peerHashSeen || !HashesAgree) return; // mismatch latches until reset
+            var snapshot = History.Get(PeerHashTick);
+            if (snapshot == null) return;
+            if (snapshot.Hash() != PeerHash)
+            {
+                HashesAgree = false;
+                Debug.LogError(
+                    $"DESYNC at tick {PeerHashTick}: mine={snapshot.Hash():X16} theirs={PeerHash:X16} (peer {LocalPlayer})");
             }
         }
 
@@ -158,7 +194,8 @@ namespace Tanks.Game
             Span<byte> buf = stackalloc byte[InputCodec.MessageSize];
             for (uint t = windowStart; t <= _lastScheduledTick; t++)
             {
-                InputCodec.Write(buf, t, LocalPlayer, _ring.Get(t, LocalPlayer));
+                // Every packet piggybacks our latest confirmed (tick, hash) — the desync canary.
+                InputCodec.Write(buf, t, LocalPlayer, _ring.Get(t, LocalPlayer), State.Tick, LastHash);
                 Transport.Send(buf);
             }
         }
@@ -183,6 +220,10 @@ namespace Tanks.Game
             }
             _lastScheduledTick = InputDelay;
             Stalls = 0;
+            HashesAgree = true;
+            _peerHashSeen = false;
+            PeerHashTick = 0;
+            PeerHash = 0;
         }
 
         /// <summary>The input most recently applied for a player (for the HUD).</summary>

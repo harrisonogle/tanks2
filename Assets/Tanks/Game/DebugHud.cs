@@ -35,15 +35,24 @@ namespace Tanks.Game
             var state = _runner != null ? _runner.State : null;
             if (state == null) return;
 
-            float x = Side == 0 ? 10f : Screen.width / 2f + 10f;
-            GUILayout.BeginArea(new Rect(x, 10, 440, 340), GUI.skin.box);
+            bool desync = !_runner.HashesAgree;
+            if (desync) GUI.color = new Color(1f, 0.3f, 0.3f); // the on-screen desync alarm
 
-            GUILayout.Label($"TANKS — PEER {Side} owns P{_runner.LocalPlayer + 1} (M1: wire live, remote not consumed)");
+            float x = Side == 0 ? 10f : Screen.width / 2f + 10f;
+            GUILayout.BeginArea(new Rect(x, 10, 440, 360), GUI.skin.box);
+
+            GUILayout.Label(desync
+                ? $"TANKS — PEER {Side} owns P{_runner.LocalPlayer + 1}   >>> DESYNC (see console) <<<"
+                : $"TANKS — PEER {Side} owns P{_runner.LocalPlayer + 1}   (lockstep, delay {SimRunner.InputDelay})");
             GUILayout.Space(4);
-            GUILayout.Label($"Tick:       {state.Tick}");
-            GUILayout.Label($"State hash: {(_runner.LastHash & 0xFFFFFFFFUL):X8}");
-            GUILayout.Label($"FPS:        {(Time.smoothDeltaTime > 0f ? 1f / Time.smoothDeltaTime : 0f):0}");
-            GUILayout.Label($"rx:         {_runner.PacketsReceived} pkts  (last: tick {_runner.LastRxTick}, {_runner.LastRxInput})");
+            GUILayout.Label($"Tick:      {state.Tick}   stalls: {_runner.Stalls}");
+            GUILayout.Label($"My hash:   {_runner.LastHash:X16}");
+            // The peer's report is for ITS latest confirmed tick — usually a few ticks off
+            // ours, so the two lines rarely show the same value. The real comparison happens
+            // tick-aligned against history inside SimRunner; this just surfaces the verdict.
+            GUILayout.Label($"Peer hash: {_runner.PeerHash:X16} @tick {_runner.PeerHashTick}  {(desync ? "MISMATCH" : "ok")}");
+            GUILayout.Label($"FPS:       {(Time.smoothDeltaTime > 0f ? 1f / Time.smoothDeltaTime : 0f):0}");
+            GUILayout.Label($"rx:        {_runner.PacketsReceived} pkts  (last: tick {_runner.LastRxTick}, {_runner.LastRxInput})");
 
             GUILayout.Space(4);
             for (int i = 0; i < SimConfig.PlayerCount; i++)
@@ -73,6 +82,7 @@ namespace Tanks.Game
             GUILayout.Label("H (keyboard) or Select (gamepad): hide this HUD");
 
             GUILayout.EndArea();
+            GUI.color = Color.white; // don't leak the alarm tint into other OnGUI draws
         }
 
         private static int WinnerIndex(GameState state)
