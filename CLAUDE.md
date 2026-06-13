@@ -38,7 +38,7 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 - **Unity compiles (the `Game` layer):** batch-mode import/compile, then check for `error CS`
   and that `Library/ScriptAssemblies/Tanks.*.dll` were produced:
   ```
-  & "C:\Program Files\Unity\Hub\Editor\6000.4.8f1\Editor\Unity.exe" `
+  & "C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Unity.exe" `
     -batchmode -quit -nographics -accept-apiupdate `
     -projectPath "<repo>" -logFile "<repo>\unity_import.log"
   ```
@@ -46,7 +46,7 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 
 ## Environment
 
-- Unity **6000.4.8f1**, built-in render pipeline, legacy Input (`activeInputHandler: 0`).
+- Unity **6000.3.17f1** (6.3 LTS), built-in render pipeline, legacy Input (`activeInputHandler: 0`).
 - .NET SDK 10 present; `SimTests~` targets `net10.0` and links Sim/Net source via `<Compile Include>`.
 - User: strong C#/systems/networking background, newer to Unity. Explain Unity-isms, not C#.
 - User prefers questions asked **inline in prose**, never via the AskUserQuestion popup.

@@ -35,7 +35,7 @@ for lockstep and rollback:
 ## Run the game
 
 1. Open **Unity Hub → Add → Add project from disk** and select this folder
-   (`...\harrisonogle\Tanks2`). It's already configured for editor **6000.4.8f1**.
+   (`...\harrisonogle\Tanks2`). It's already configured for editor **6000.3.17f1**.
 2. Open it, wait for import, then press **Play**. Everything is created from code by
    `Bootstrap` (see `Assets/Tanks/Game/Bootstrap.cs`) — there is no scene to set up.
 
