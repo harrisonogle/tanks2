@@ -84,6 +84,7 @@ The netcode work starts at the clearly-marked **NETCODE SEAM** in
 
 ## Notes
 
-- Built-in render pipeline, legacy Input — chosen for zero setup. Both are easy to swap.
+- Built-in render pipeline, new Input System package — chosen for clean gamepad support.
+  Both are easy to swap.
 - IntelliSense: Unity will generate a solution for Visual Studio (already installed). If you
   prefer Rider/VS Code, add the matching IDE package via **Window → Package Manager**.

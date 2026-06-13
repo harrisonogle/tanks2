@@ -46,7 +46,8 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 
 ## Environment
 
-- Unity **6000.3.17f1** (6.3 LTS), built-in render pipeline, legacy Input (`activeInputHandler: 0`).
+- Unity **6000.3.17f1** (6.3 LTS), built-in render pipeline, new Input System package
+  (`activeInputHandler: 1`). Input is sampled via `UnityEngine.InputSystem` in `InputSampler.cs`.
 - .NET SDK 10 present; `SimTests~` targets `net10.0` and links Sim/Net source via `<Compile Include>`.
 - User: strong C#/systems/networking background, newer to Unity. Explain Unity-isms, not C#.
 - User prefers questions asked **inline in prose**, never via the AskUserQuestion popup.
