@@ -37,6 +37,10 @@
 # Visual Studio cache directory
 .vs/
 
+# JetBrains Rider / IntelliJ IDE files
+.idea/
+*.iml
+
 # Gradle cache directory
 .gradle/
 
