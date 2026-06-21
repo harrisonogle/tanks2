@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
 using Tanks.Sim;
+using Tanks.Net;
 
-namespace Tanks.Net
+// Test-only fake transport. Lives in the test project (not shipped in Tanks.Net) and models
+// real-network pain — latency, jitter/reorder, loss — deterministically, driven by the sim
+// tick rather than wall-clock. This is the transport the deterministic test gates run on.
+namespace Tanks.Tests
 {
     /// <summary>
     /// A same-process link between two endpoints (0 and 1) that models real-network pain:
@@ -98,7 +102,7 @@ namespace Tanks.Net
             if (i > 0) _inFlight.RemoveRange(0, i);
         }
 
-        private bool ReceiveInternal(int endpoint, out byte[] data)
+        private bool ReceiveInternal(int endpoint, out byte[]? data)
         {
             var q = _inbox[endpoint];
             if (q.Count > 0) { data = q.Dequeue(); return true; }
@@ -117,7 +121,7 @@ namespace Tanks.Net
             public Endpoint(InProcessNetwork net, int id) { _net = net; LocalEndpoint = id; }
 
             public void Send(ReadOnlySpan<byte> data) => _net.SendInternal(LocalEndpoint, data);
-            public bool TryReceive(out byte[] data) => _net.ReceiveInternal(LocalEndpoint, out data);
+            public bool TryReceive(out byte[]? data) => _net.ReceiveInternal(LocalEndpoint, out data);
         }
     }
 }

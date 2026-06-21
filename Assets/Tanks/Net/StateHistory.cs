@@ -1,7 +1,7 @@
 using System;
 using Tanks.Sim;
 
-namespace Tanks.Game
+namespace Tanks.Net
 {
     /// <summary>
     /// Ring buffer of past <see cref="GameState"/> snapshots, indexed by tick. This is the
@@ -31,7 +31,7 @@ namespace Tanks.Game
         }
 
         /// <summary>Returns the snapshot for an exact tick, or null if it's no longer in the buffer.</summary>
-        public GameState Get(uint tick)
+        public GameState? Get(uint tick)
         {
             int i = (int)(tick % (uint)_capacity);
             var s = _buffer[i];

@@ -9,6 +9,11 @@ namespace Tanks.Tests
     /// </summary>
     public class DeterminismTests
     {
+        private readonly SimConfig _config = new SimConfig();
+        private readonly Simulation _sim;
+
+        public DeterminismTests() => _sim = new Simulation(_config);
+
         // A varied but fully deterministic scripted input for one player at a given tick.
         private static PlayerInput Scripted(int player, uint tick)
         {
@@ -27,15 +32,15 @@ namespace Tanks.Tests
         [Test]
         public void SameInputsProduceIdenticalHashesEveryTick()
         {
-            var arena = Arena.CreateDefault();
-            var a = GameState.CreateInitial();
-            var b = GameState.CreateInitial();
+            var arena = Arena.CreateDefault(_config);
+            var a = GameState.CreateInitial(_config);
+            var b = GameState.CreateInitial(_config);
 
             for (uint t = 0; t < 2000; t++)
             {
                 var inputs = InputsAt(t);
-                Simulation.Tick(a, arena, inputs);
-                Simulation.Tick(b, arena, inputs);
+                _sim.Tick(a, arena, inputs);
+                _sim.Tick(b, arena, inputs);
                 Assert.That(b.Hash(), Is.EqualTo(a.Hash()), $"diverged at tick {t}");
             }
         }
@@ -43,12 +48,12 @@ namespace Tanks.Tests
         [Test]
         public void CloneThenContinue_MatchesUnclonedRun()
         {
-            var arena = Arena.CreateDefault();
-            var original = GameState.CreateInitial();
+            var arena = Arena.CreateDefault(_config);
+            var original = GameState.CreateInitial(_config);
 
             // Advance to a mid-match tick, then branch a clone.
             for (uint t = 0; t < 300; t++)
-                Simulation.Tick(original, arena, InputsAt(t));
+                _sim.Tick(original, arena, InputsAt(t));
 
             var clone = original.Clone();
             Assert.That(clone.Hash(), Is.EqualTo(original.Hash()));
@@ -57,8 +62,8 @@ namespace Tanks.Tests
             for (uint t = 300; t < 900; t++)
             {
                 var inputs = InputsAt(t);
-                Simulation.Tick(original, arena, inputs);
-                Simulation.Tick(clone, arena, inputs);
+                _sim.Tick(original, arena, inputs);
+                _sim.Tick(clone, arena, inputs);
                 Assert.That(clone.Hash(), Is.EqualTo(original.Hash()), $"clone diverged at tick {t}");
             }
         }
@@ -66,27 +71,27 @@ namespace Tanks.Tests
         [Test]
         public void CopyFrom_RestoresStateExactly()
         {
-            var arena = Arena.CreateDefault();
-            var live = GameState.CreateInitial();
-            var snapshot = GameState.CreateInitial();
+            var arena = Arena.CreateDefault(_config);
+            var live = GameState.CreateInitial(_config);
+            var snapshot = GameState.CreateInitial(_config);
 
             for (uint t = 0; t < 200; t++)
-                Simulation.Tick(live, arena, InputsAt(t));
+                _sim.Tick(live, arena, InputsAt(t));
 
             snapshot.CopyFrom(live);
 
             // Mutate live further...
             for (uint t = 200; t < 260; t++)
-                Simulation.Tick(live, arena, InputsAt(t));
+                _sim.Tick(live, arena, InputsAt(t));
 
             // ...then restore and re-run; we must land exactly where live is.
             live.CopyFrom(snapshot);
             for (uint t = 200; t < 260; t++)
-                Simulation.Tick(live, arena, InputsAt(t));
+                _sim.Tick(live, arena, InputsAt(t));
 
             var reference = snapshot.Clone();
             for (uint t = 200; t < 260; t++)
-                Simulation.Tick(reference, arena, InputsAt(t));
+                _sim.Tick(reference, arena, InputsAt(t));
 
             Assert.That(live.Hash(), Is.EqualTo(reference.Hash()));
         }

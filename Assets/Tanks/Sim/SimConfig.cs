@@ -1,47 +1,54 @@
 namespace Tanks.Sim
 {
     /// <summary>
-    /// All gameplay tuning lives here as deterministic constants. Speeds are expressed
-    /// PER TICK (the sim has no concept of wall-clock time — it only advances in ticks).
+    /// All gameplay tuning, as deterministic values on an injectable instance. Speeds are
+    /// expressed PER TICK (the sim has no concept of wall-clock time — it only advances in
+    /// ticks). Constructed once at the composition root and threaded through the sim; both
+    /// peers must use identical config (it's part of the session's agreed configuration).
     /// </summary>
-    public static class SimConfig
+    public sealed class SimConfig
     {
-        public const int TickRate = 60;            // simulation ticks per second
-        public const int PlayerCount = 2;          // 1v1
-        public const int MaxBullets = 32;          // shared bullet pool size
-        public const int MaxBulletsPerPlayer = 5;  // max simultaneous shells per tank (Tanks-style)
+        public int TickRate { get; } = 60;            // simulation ticks per second
+        public int PlayerCount { get; } = 2;          // 1v1
+        public int MaxBullets { get; } = 32;          // shared bullet pool size
+        public int MaxBulletsPerPlayer { get; } = 5;  // max simultaneous shells per tank (Tanks-style)
 
         // Arena (origin at bottom-left; units are arbitrary "meters").
-        public static readonly Fixed ArenaWidth = Fixed.FromInt(32);
-        public static readonly Fixed ArenaHeight = Fixed.FromInt(20);
+        public Fixed ArenaWidth { get; } = Fixed.FromInt(32);
+        public Fixed ArenaHeight { get; } = Fixed.FromInt(20);
 
         // Tank
-        public static readonly Fixed TankRadius = Fixed.FromFloat(0.6f);     // treated as a square half-extent for collision
-        public static readonly Fixed TankMoveSpeed = Fixed.FromFloat(0.12f); // units per tick
+        public Fixed TankRadius { get; } = Fixed.FromFloat(0.6f);     // treated as a square half-extent for collision
+        public Fixed TankMoveSpeed { get; } = Fixed.FromFloat(0.12f); // units per tick
         // Per-axis speed for diagonals so total speed matches cardinal (TankMoveSpeed * 1/sqrt(2)).
-        public static readonly Fixed DiagonalMoveSpeed = TankMoveSpeed * Fixed.FromFloat(0.70710678f);
-        public const int KeyboardTurretTurnSpeed = 24;                       // angle units per tick (~253 deg/s); used by the keyboard turret-aim fallback
-        public const int TankMaxHealth = 1;                                  // one-shot kill, classic Tanks
+        public Fixed DiagonalMoveSpeed { get; }                       // set in ctor (depends on TankMoveSpeed)
+        public int KeyboardTurretTurnSpeed { get; } = 24;             // angle units per tick (~253 deg/s); keyboard turret-aim fallback
+        public int TankMaxHealth { get; } = 1;                        // one-shot kill, classic Tanks
 
         // Dash
-        public const int DashDurationTicks = 9;                              // length of the speed burst when you trigger a dash (~100 ms at 60 Hz)
-        public const int DashCooldownTicks = 15;                             // minimum ticks between dashes
-        public const int DashSpeedMultiplier = 3;                            // movement speed factor while DashTicks > 0
+        public int DashDurationTicks { get; } = 9;                    // length of the speed burst when you trigger a dash (~100 ms at 60 Hz)
+        public int DashCooldownTicks { get; } = 15;                   // minimum ticks between dashes
+        public int DashSpeedMultiplier { get; } = 3;                  // movement speed factor while DashTicks > 0
 
         // Bullet
-        public static readonly Fixed BulletSpeed = Fixed.FromFloat(0.20f);   // units per tick
-        public static readonly Fixed BulletRadius = Fixed.FromFloat(0.12f);
-        public const int BulletMaxBounces = 1;                               // single ricochet; the next surface contact detonates the shell (classic Tanks!)
-        public const int BulletLifeTicks = 60 * 8;
-        public const int FireCooldownTicks = 12;
+        public Fixed BulletSpeed { get; } = Fixed.FromFloat(0.20f);   // units per tick
+        public Fixed BulletRadius { get; } = Fixed.FromFloat(0.12f);
+        public int BulletMaxBounces { get; } = 1;                     // single ricochet; the next surface contact detonates the shell (classic Tanks!)
+        public int BulletLifeTicks { get; } = 60 * 8;
+        public int FireCooldownTicks { get; } = 12;
+
+        public SimConfig()
+        {
+            DiagonalMoveSpeed = TankMoveSpeed * Fixed.FromFloat(0.70710678f);
+        }
 
         // Spawns: P0 on the left facing +X, P1 on the right facing -X.
-        public static FixVec2 SpawnPosition(int player)
+        public FixVec2 SpawnPosition(int player)
             => player == 0
                 ? new FixVec2(Fixed.FromInt(3), Fixed.FromInt(10))
                 : new FixVec2(Fixed.FromInt(29), Fixed.FromInt(10));
 
-        public static int SpawnAngle(int player)
+        public int SpawnAngle(int player)
             => player == 0 ? 0 : Trig.AngleCount / 2; // 0 = +X, half = -X
     }
 }

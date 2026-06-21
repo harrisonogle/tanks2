@@ -21,7 +21,7 @@ namespace Tanks.Sim
         public Fixed Length() => Fixed.Sqrt(X * X + Y * Y);
 
         public bool Equals(FixVec2 other) => X == other.X && Y == other.Y;
-        public override bool Equals(object obj) => obj is FixVec2 v && Equals(v);
+        public override bool Equals(object? obj) => obj is FixVec2 v && Equals(v);
         public override int GetHashCode() => (X.Raw * 397) ^ Y.Raw;
         public override string ToString() => $"({X}, {Y})";
     }

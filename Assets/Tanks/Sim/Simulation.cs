@@ -9,19 +9,23 @@ namespace Tanks.Sim
     ///   - lockstep: both peers call Tick with the same inputs every tick
     ///   - rollback: re-call Tick over a buffer of past ticks when a prediction was wrong
     /// </summary>
-    public static class Simulation
+    public sealed class Simulation
     {
+        private readonly SimConfig _config;
+
+        public Simulation(SimConfig config) => _config = config;
+
         /// <summary>Advance the state by exactly one tick. Mutates <paramref name="state"/> in place.</summary>
-        public static void Tick(GameState state, Arena arena, PlayerInput[] inputs)
+        public void Tick(GameState state, Arena arena, PlayerInput[] inputs)
         {
             UpdateTanks(state, arena, inputs);
             UpdateBullets(state, arena);
             state.Tick++;
         }
 
-        private static void UpdateTanks(GameState state, Arena arena, PlayerInput[] inputs)
+        private void UpdateTanks(GameState state, Arena arena, PlayerInput[] inputs)
         {
-            for (int i = 0; i < SimConfig.PlayerCount; i++)
+            for (int i = 0; i < _config.PlayerCount; i++)
             {
                 ref Tank t = ref state.Tanks[i];
                 if (t.FireCooldown > 0) t.FireCooldown--;
@@ -46,16 +50,16 @@ namespace Tanks.Sim
                 // movement direction — pressing dash with no direction does nothing.
                 if (input.Dash && t.DashCooldown == 0 && (wx != 0 || wy != 0))
                 {
-                    t.DashTicks = SimConfig.DashDurationTicks;
-                    t.DashCooldown = SimConfig.DashCooldownTicks;
+                    t.DashTicks = _config.DashDurationTicks;
+                    t.DashCooldown = _config.DashCooldownTicks;
                 }
 
                 if (wx != 0 || wy != 0)
                 {
                     // Scale per-axis on diagonals so total speed equals cardinal speed.
-                    Fixed perAxis = (wx != 0 && wy != 0) ? SimConfig.DiagonalMoveSpeed : SimConfig.TankMoveSpeed;
+                    Fixed perAxis = (wx != 0 && wy != 0) ? _config.DiagonalMoveSpeed : _config.TankMoveSpeed;
                     // Burst of speed while the dash is active.
-                    if (t.DashTicks > 0) perAxis = perAxis * SimConfig.DashSpeedMultiplier;
+                    if (t.DashTicks > 0) perAxis = perAxis * _config.DashSpeedMultiplier;
                     Fixed dx = perAxis * wx;
                     Fixed dy = perAxis * wy;
                     t.X = ResolveTankX(t.X + dx, t.Y, arena);
@@ -64,17 +68,17 @@ namespace Tanks.Sim
                 }
 
                 // Firing
-                if (input.Fire && t.FireCooldown == 0 && CountOwnedBullets(state, i) < SimConfig.MaxBulletsPerPlayer)
+                if (input.Fire && t.FireCooldown == 0 && CountOwnedBullets(state, i) < _config.MaxBulletsPerPlayer)
                 {
                     if (TrySpawnBullet(state, i, t))
-                        t.FireCooldown = SimConfig.FireCooldownTicks;
+                        t.FireCooldown = _config.FireCooldownTicks;
                 }
             }
         }
 
-        private static Fixed ResolveTankX(Fixed x, Fixed y, Arena arena)
+        private Fixed ResolveTankX(Fixed x, Fixed y, Arena arena)
         {
-            Fixed r = SimConfig.TankRadius;
+            Fixed r = _config.TankRadius;
             x = Fixed.Clamp(x, r, arena.Width - r);
             foreach (var w in arena.Walls)
             {
@@ -84,9 +88,9 @@ namespace Tanks.Sim
             return x;
         }
 
-        private static Fixed ResolveTankY(Fixed x, Fixed y, Arena arena)
+        private Fixed ResolveTankY(Fixed x, Fixed y, Arena arena)
         {
-            Fixed r = SimConfig.TankRadius;
+            Fixed r = _config.TankRadius;
             y = Fixed.Clamp(y, r, arena.Height - r);
             foreach (var w in arena.Walls)
             {
@@ -96,7 +100,7 @@ namespace Tanks.Sim
             return y;
         }
 
-        private static int CountOwnedBullets(GameState state, int owner)
+        private int CountOwnedBullets(GameState state, int owner)
         {
             int n = 0;
             for (int i = 0; i < state.Bullets.Length; i++)
@@ -104,7 +108,7 @@ namespace Tanks.Sim
             return n;
         }
 
-        private static bool TrySpawnBullet(GameState state, int owner, in Tank t)
+        private bool TrySpawnBullet(GameState state, int owner, in Tank t)
         {
             int slot = -1;
             for (int i = 0; i < state.Bullets.Length; i++)
@@ -116,23 +120,23 @@ namespace Tanks.Sim
             // Bullets travel along the TURRET angle, not the body angle.
             FixVec2 dir = Trig.Direction(t.TurretAngle);
             // Spawn just outside the muzzle so the shell doesn't instantly self-collide.
-            Fixed offset = SimConfig.TankRadius + SimConfig.BulletRadius + Fixed.FromFloat(0.05f);
+            Fixed offset = _config.TankRadius + _config.BulletRadius + Fixed.FromFloat(0.05f);
 
             state.Bullets[slot] = new Bullet
             {
                 Active = true,
                 X = t.X + dir.X * offset,
                 Y = t.Y + dir.Y * offset,
-                VX = dir.X * SimConfig.BulletSpeed,
-                VY = dir.Y * SimConfig.BulletSpeed,
+                VX = dir.X * _config.BulletSpeed,
+                VY = dir.Y * _config.BulletSpeed,
                 Owner = owner,
-                BouncesLeft = SimConfig.BulletMaxBounces,
-                Life = SimConfig.BulletLifeTicks,
+                BouncesLeft = _config.BulletMaxBounces,
+                Life = _config.BulletLifeTicks,
             };
             return true;
         }
 
-        private static void UpdateBullets(GameState state, Arena arena)
+        private void UpdateBullets(GameState state, Arena arena)
         {
             for (int i = 0; i < state.Bullets.Length; i++)
             {
@@ -148,7 +152,7 @@ namespace Tanks.Sim
             }
         }
 
-        private static void StepBulletWithReflection(ref Bullet b, Arena arena)
+        private void StepBulletWithReflection(ref Bullet b, Arena arena)
         {
             Fixed nx = b.X + b.VX;
             Fixed ny = b.Y + b.VY;
@@ -213,17 +217,17 @@ namespace Tanks.Sim
         /// Consume one of the bullet's remaining bounces. Returns true if a bounce was
         /// available (and decremented); false if the shell should detonate at this contact.
         /// </summary>
-        private static bool TryConsumeBounce(ref Bullet b)
+        private bool TryConsumeBounce(ref Bullet b)
         {
             if (b.BouncesLeft <= 0) return false;
             b.BouncesLeft--;
             return true;
         }
 
-        private static void CheckBulletHitsTanks(GameState state, ref Bullet b)
+        private void CheckBulletHitsTanks(GameState state, ref Bullet b)
         {
-            Fixed reach = SimConfig.TankRadius + SimConfig.BulletRadius;
-            for (int j = 0; j < SimConfig.PlayerCount; j++)
+            Fixed reach = _config.TankRadius + _config.BulletRadius;
+            for (int j = 0; j < _config.PlayerCount; j++)
             {
                 ref Tank t = ref state.Tanks[j];
                 if (!t.Alive) continue;
@@ -231,7 +235,7 @@ namespace Tanks.Sim
                 // This eliminates spawn self-overlap and also stops a faster-than-bullet
                 // dash from catching its own pre-ricochet shell. Ricocheted shells (where
                 // BouncesLeft has been spent) CAN still kill the owner, just like the original.
-                if (j == b.Owner && b.BouncesLeft == SimConfig.BulletMaxBounces) continue;
+                if (j == b.Owner && b.BouncesLeft == _config.BulletMaxBounces) continue;
 
                 if (Fixed.Abs(b.X - t.X) <= reach && Fixed.Abs(b.Y - t.Y) <= reach)
                 {
@@ -246,7 +250,7 @@ namespace Tanks.Sim
         /// Body facing for an 8-way input vector. Each component is in {-1, 0, +1}; the caller
         /// guards against (0, 0). Returns one of 8 angle indices snapped to 45° steps (CCW from +X).
         /// </summary>
-        private static int AngleFromInputDir(int wx, int wy)
+        private int AngleFromInputDir(int wx, int wy)
         {
             int octant =
                 wy > 0 ? (wx > 0 ? 1 : (wx < 0 ? 3 : 2)) :

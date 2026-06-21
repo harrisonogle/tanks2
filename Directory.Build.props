@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    IDE-side nullable, scoped to the PURE layer only (Tanks.Sim / Tanks.Net), to match the
+    per-asmdef csc.rsp that drives Unity's actual compile of those assemblies.
+
+    Tanks.Game is intentionally LEFT nullable-oblivious: the Unity/MonoBehaviour layer is
+    where NRT friction lives (lifecycle-wired fields, UnityEngine.Object fake-null), and we'd
+    rather not impose it on the Unity-heavy part of the project. The pure, determinism-critical
+    layer keeps NRT, where it's high-value and low-friction.
+
+    (Unity ignores csproj/props for its own build, so csc.rsp is the source of truth there;
+    this only keeps the IDE in sync for the projects that have it enabled. SimTests~ sets
+    <Nullable>enable</Nullable> in its own csproj, so it's covered without matching here.)
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Tanks.Sim' Or '$(MSBuildProjectName)' == 'Tanks.Net'">
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

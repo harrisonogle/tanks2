@@ -1,3 +1,4 @@
+using Tanks.Net;
 using Tanks.Sim;
 using UnityEngine;
 
@@ -16,8 +17,9 @@ namespace Tanks.Game
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
-            float w = SimConfig.ArenaWidth.ToFloat();
-            float h = SimConfig.ArenaHeight.ToFloat();
+            var config = new SimConfig();
+            float w = config.ArenaWidth.ToFloat();
+            float h = config.ArenaHeight.ToFloat();
 
             // Top-down orthographic camera looking straight down the world -Y axis.
             var camGO = new GameObject("Tanks Camera");
@@ -38,11 +40,22 @@ namespace Tanks.Game
             lightGO.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
             RenderSettings.ambientLight = new Color(0.45f, 0.45f, 0.5f);
 
-            // The game object: simulation + view + HUD all live here.
+            // The game object: simulation runner (shell) + view + HUD all live here.
             var root = new GameObject("Tanks");
-            root.AddComponent<SimRunner>();
+            var runner = root.AddComponent<SimRunner>();
             root.AddComponent<GameView>();
             root.AddComponent<DebugHud>();
+
+            // Composition root: build the pure netcode driver by hand and inject it. Couch-coop
+            // for now — both players sampled locally. The session swaps in transport + discovery
+            // and reduces each peer to one local source plus remote input fed over the wire.
+            var sources = new IInputSource[]
+            {
+                new UnityInputSource(0, config),
+                new UnityInputSource(1, config),
+            };
+            var driver = new SimDriver(config, new Simulation(config), Arena.CreateDefault(config), sources, historyCapacity: 256);
+            runner.Driver = driver;
         }
     }
 }

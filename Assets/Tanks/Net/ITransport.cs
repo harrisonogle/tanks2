@@ -8,8 +8,8 @@ namespace Tanks.Net
     /// netcode's job, layered on top during your session.
     ///
     /// Implementations:
-    ///   - <see cref="InProcessNetwork"/> endpoints: same-process loopback with simulated
-    ///     latency/jitter/loss (for development and the determinism tests).
+    ///   - a test-only in-process fake (same-process loopback with simulated latency/jitter/loss),
+    ///     which lives in the test project and backs the deterministic test gates.
     ///   - (later) a real System.Net.Sockets UDP transport, swapped in behind this same interface.
     /// </summary>
     public interface ITransport
@@ -20,7 +20,7 @@ namespace Tanks.Net
         /// <summary>Send a datagram to the peer. Fire-and-forget; may be dropped or delayed.</summary>
         void Send(ReadOnlySpan<byte> data);
 
-        /// <summary>Pop the next datagram that has arrived, if any. Returns false when the inbox is empty.</summary>
-        bool TryReceive(out byte[] data);
+        /// <summary>Pop the next datagram that has arrived, if any. Returns false (and null) when the inbox is empty.</summary>
+        bool TryReceive(out byte[]? data);
     }
 }

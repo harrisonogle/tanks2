@@ -39,7 +39,7 @@ namespace Tanks.Game
             var state = _runner.State;
             if (state == null) return;
 
-            for (int i = 0; i < SimConfig.PlayerCount; i++)
+            for (int i = 0; i < _runner.Config.PlayerCount; i++)
             {
                 ref readonly Tank t = ref state.Tanks[i];
                 var root = _tankRoots[i];
@@ -124,10 +124,10 @@ namespace Tanks.Game
 
         private void BuildTanks()
         {
-            float d = SimConfig.TankRadius.ToFloat() * 2f;
-            _tankRoots = new Transform[SimConfig.PlayerCount];
-            _tankBarrels = new Transform[SimConfig.PlayerCount];
-            for (int i = 0; i < SimConfig.PlayerCount; i++)
+            float d = _runner.Config.TankRadius.ToFloat() * 2f;
+            _tankRoots = new Transform[_runner.Config.PlayerCount];
+            _tankBarrels = new Transform[_runner.Config.PlayerCount];
+            for (int i = 0; i < _runner.Config.PlayerCount; i++)
             {
                 // Empty root carries the body's facing; the body cube and the front marker hang
                 // off it. The root stays unscaled so each child's scale lives in clean units.
@@ -159,9 +159,9 @@ namespace Tanks.Game
 
         private void BuildBullets()
         {
-            float d = SimConfig.BulletRadius.ToFloat() * 2.4f;
-            _bullets = new GameObject[SimConfig.MaxBullets];
-            for (int i = 0; i < SimConfig.MaxBullets; i++)
+            float d = _runner.Config.BulletRadius.ToFloat() * 2.4f;
+            _bullets = new GameObject[_runner.Config.MaxBullets];
+            for (int i = 0; i < _runner.Config.MaxBullets; i++)
             {
                 var go = CreateSphere($"Bullet{i}", BulletColor);
                 go.localScale = new Vector3(d, d, d);

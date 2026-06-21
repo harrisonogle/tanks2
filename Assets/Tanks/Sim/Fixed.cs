@@ -88,7 +88,7 @@ namespace Tanks.Sim
         }
 
         public bool Equals(Fixed other) => Raw == other.Raw;
-        public override bool Equals(object obj) => obj is Fixed f && f.Raw == Raw;
+        public override bool Equals(object? obj) => obj is Fixed f && f.Raw == Raw;
         public override int GetHashCode() => Raw;
         public int CompareTo(Fixed other) => Raw.CompareTo(other.Raw);
         public override string ToString() => ToFloat().ToString("0.000");

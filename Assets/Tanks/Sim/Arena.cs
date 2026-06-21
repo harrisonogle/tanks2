@@ -42,7 +42,7 @@ namespace Tanks.Sim
             Walls = walls;
         }
 
-        public static Arena CreateDefault()
+        public static Arena CreateDefault(SimConfig config)
         {
             var walls = new[]
             {
@@ -50,7 +50,7 @@ namespace Tanks.Sim
                 Aabb.FromInts(20, 6, 22, 14),   // right pillar
                 Aabb.FromInts(15, 9, 17, 11),   // center block
             };
-            return new Arena(SimConfig.ArenaWidth, SimConfig.ArenaHeight, walls);
+            return new Arena(config.ArenaWidth, config.ArenaHeight, walls);
         }
     }
 }

@@ -39,14 +39,14 @@ namespace Tanks.Game
             GUILayout.Label($"FPS:        {(Time.smoothDeltaTime > 0f ? 1f / Time.smoothDeltaTime : 0f):0}");
 
             GUILayout.Space(4);
-            for (int i = 0; i < SimConfig.PlayerCount; i++)
+            for (int i = 0; i < _runner.Config.PlayerCount; i++)
             {
                 ref readonly Tank t = ref state.Tanks[i];
                 int bodyDeg = (t.Angle * 360) / Trig.AngleCount;
                 int turretDeg = (t.TurretAngle * 360) / Trig.AngleCount;
                 string dash =
                     t.DashTicks > 0 ? "ACTIVE" :
-                    t.DashCooldown > 0 ? $"cd {t.DashCooldown / (float)SimConfig.TickRate:0.0}s" :
+                    t.DashCooldown > 0 ? $"cd {t.DashCooldown / (float)_runner.Config.TickRate:0.0}s" :
                     "ready";
                 GUILayout.Label($"P{i + 1}: {(t.Alive ? "alive" : "DEAD ")}  body={bodyDeg,4}°  turret={turretDeg,4}°  dash={dash,-7}");
             }

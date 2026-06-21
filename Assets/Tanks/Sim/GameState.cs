@@ -37,30 +37,36 @@ namespace Tanks.Sim
     {
         public uint Tick;
         public uint Rng;            // deterministic xorshift seed (reserved for future use; hashed for safety)
-        public Tank[] Tanks;        // length SimConfig.PlayerCount
-        public Bullet[] Bullets;    // length SimConfig.MaxBullets
+        public Tank[] Tanks;        // length config.PlayerCount
+        public Bullet[] Bullets;    // length config.MaxBullets
 
-        public static GameState CreateInitial(uint seed = 0x1234_5678u)
+        // All construction goes through here, so the arrays are never null. Private on purpose —
+        // build via CreateInitial / Clone; you can't `new GameState()` into an invalid (unsized) state.
+        private GameState(int tankCount, int bulletCount)
         {
-            var s = new GameState
+            Tanks = new Tank[tankCount];
+            Bullets = new Bullet[bulletCount];
+        }
+
+        public static GameState CreateInitial(SimConfig config, uint seed = 0x1234_5678u)
+        {
+            var s = new GameState(config.PlayerCount, config.MaxBullets)
             {
                 Tick = 0,
                 Rng = seed == 0 ? 1u : seed,
-                Tanks = new Tank[SimConfig.PlayerCount],
-                Bullets = new Bullet[SimConfig.MaxBullets],
             };
 
-            for (int i = 0; i < SimConfig.PlayerCount; i++)
+            for (int i = 0; i < config.PlayerCount; i++)
             {
-                var spawn = SimConfig.SpawnPosition(i);
-                int angle = SimConfig.SpawnAngle(i);
+                var spawn = config.SpawnPosition(i);
+                int angle = config.SpawnAngle(i);
                 s.Tanks[i] = new Tank
                 {
                     X = spawn.X,
                     Y = spawn.Y,
                     Angle = angle,
                     TurretAngle = angle,   // turret starts aligned with body facing
-                    Health = SimConfig.TankMaxHealth,
+                    Health = config.TankMaxHealth,
                     FireCooldown = 0,
                     DashTicks = 0,
                     DashCooldown = 0,
@@ -72,13 +78,13 @@ namespace Tanks.Sim
         /// <summary>Deep copy. Used to snapshot states for the rollback ring buffer.</summary>
         public GameState Clone()
         {
-            var c = new GameState
+            var c = new GameState(Tanks.Length, Bullets.Length)
             {
                 Tick = Tick,
                 Rng = Rng,
-                Tanks = (Tank[])Tanks.Clone(),
-                Bullets = (Bullet[])Bullets.Clone(),
             };
+            Array.Copy(Tanks, c.Tanks, Tanks.Length);
+            Array.Copy(Bullets, c.Bullets, Bullets.Length);
             return c;
         }
 

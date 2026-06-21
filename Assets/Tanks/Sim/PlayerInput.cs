@@ -48,7 +48,7 @@ namespace Tanks.Sim
         public bool Dash    => (Buttons & InputButtons.Dash) != 0;
 
         public bool Equals(PlayerInput other) => Buttons == other.Buttons && TurretAim == other.TurretAim;
-        public override bool Equals(object obj) => obj is PlayerInput p && Equals(p);
+        public override bool Equals(object? obj) => obj is PlayerInput p && Equals(p);
         public override int GetHashCode() => ((int)Buttons * 397) ^ TurretAim;
         public override string ToString() => $"{Buttons} aim={TurretAim}";
     }
