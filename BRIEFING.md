@@ -169,7 +169,10 @@ throwaway work** — it's the real shape from here on. Build, in `Tanks.Net` whe
 **a. Peer refactor (pure driver + thin shell).** Pull the tick loop out of `SimRunner`
 into a pure netcode driver class. `Bootstrap` becomes a composition root that creates
 **one** peer (single full-screen camera — no split-screen, no layers) and injects a
-`PeerContext`. The MonoBehaviour just forwards `Update()`.
+`PeerContext`. The MonoBehaviour just forwards `Update()`. **Do the `Bootstrap`/`PeerContext`
+wiring _after_ (b)/(c):** its shape is `(what discovery produces) + (what the loop needs)`, so
+build the networking first and let the peer wiring consume its output. `Bootstrap` keeps its
+current couch-coop wiring until then.
 
 **b. `UdpTransport : ITransport`** using `System.Net.Sockets`. Bind the game socket to
 **`IPAddress.Any` : gamePort** — you never need to know your own IP; the OS accepts
