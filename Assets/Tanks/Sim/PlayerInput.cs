@@ -7,7 +7,7 @@ namespace Tanks.Sim
     /// serialized and sent over the wire for lockstep/rollback.
     /// </summary>
     [Flags]
-    public enum InputButtons : byte
+    public enum InputButtons : ushort
     {
         None    = 0,
         Forward = 1 << 0, // +Y movement

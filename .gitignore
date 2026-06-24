@@ -113,6 +113,6 @@ InitTestScene*.unity*
 # Unity ignores folders ending in '~', so these live outside the asset pipeline.
 # One glob covers them all: ignore build output, but keep the hand-written csproj
 # (the global "*.csproj" rule above would otherwise exclude it).
-*~/bin/
-*~/obj/
+**/bin/
+**/obj/
 !*~/*.csproj
