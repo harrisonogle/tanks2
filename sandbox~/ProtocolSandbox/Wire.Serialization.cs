@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using Tanks.Sim;
 
+namespace Tanks.Net;
+
 partial struct GameProtocolHeader
 {
     public static bool TryRead(ReadOnlySpan<byte> buffer, out GameProtocolHeader header, out int bytesRead)
@@ -269,17 +271,21 @@ partial struct InputMessage
         {
             ref PeerInput peerInput = ref message.Inputs[i]; // it's initialized to default; at any rate, we'll set all fields
 
-            if (buffer.Length < 2) return false;
+            if (buffer.Length < 2) goto Fail;
             peerInput.Buttons = (InputButtons)BinaryPrimitives.ReadUInt16BigEndian(buffer[..2]);
             buffer = buffer[2..];
 
-            if (buffer.Length < 2) return false;
+            if (buffer.Length < 2) goto Fail;
             peerInput.TurretAim = BinaryPrimitives.ReadUInt16BigEndian(buffer[..2]);
             buffer = buffer[2..];
         }
 
         bytesRead = initialLength - buffer.Length;
         return true;
+
+    Fail:
+        bytesRead = initialLength - buffer.Length;
+        return false;
     }
 
     public static bool TryWrite(ref InputMessage message, Span<byte> buffer, out int bytesWritten)
@@ -364,8 +370,8 @@ partial struct AdvantageMessage
         }
 
         message = new AdvantageMessage();
-        message.SeqTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[0..4]);
-        message.AckTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[4..8]);
+        message.CurrentTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[0..4]);
+        message.LastReceivedTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[4..8]);
         bytesRead = 8;
         return true;
     }
@@ -378,8 +384,8 @@ partial struct AdvantageMessage
             return false;
         }
 
-        BinaryPrimitives.WriteUInt32BigEndian(buffer[0..4], message.SeqTick);
-        BinaryPrimitives.WriteUInt32BigEndian(buffer[4..8], message.AckTick);
+        BinaryPrimitives.WriteUInt32BigEndian(buffer[0..4], message.CurrentTick);
+        BinaryPrimitives.WriteUInt32BigEndian(buffer[4..8], message.LastReceivedTick);
         bytesWritten = 8;
         return true;
     }
