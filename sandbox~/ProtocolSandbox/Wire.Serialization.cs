@@ -1,112 +1,14 @@
-
 using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Net.Mail;
 using Tanks.Sim;
 
-namespace Tanks.Net;
-
-public struct GameProtocolHeader
+partial struct GameProtocolHeader
 {
-    public const int MinimumLength = 8; // 1 + 1 + 1 + 1 + 4
-    public byte Magic;
-    public byte MajorVersion;
-    public byte MinorVersion;
-    public byte Flags;
-    public int SessionId;
-}
-
-public enum MessageType : int
-{
-    None = 0, // don't put a real one here so it needs to be explicitly specified; no implicit parsing
-    Ping = 1, // handshake leg #1
-    Pong = 2, // handshake leg #2
-    PingPong = 3, // handshake leg #3
-    Disconnect = 4,
-    Input = 5, // send inputs
-    StateHash = 6, // send game state hash
-    Advantage = 7, // "frame advantage" (GGPO)
-}
-
-public struct MessageHeader
-{
-    public const int MinimumLength = 8; // 4 + 4
-    public MessageType Type;
-    public int Length;
-}
-
-public struct PingMessage
-{
-    public const int MinimumLength = 24; // 8 + 8 + 8
-    public long Nonce;
-    public long PeerId;
-    public long SendTimestamp;
-}
-
-public struct PongMessage
-{
-    public const int MinimumLength = 40; // 8 + 8 + 8 + 8 + 8
-    public long InitiatorNonce;
-    public long ResponderNonce;
-    public long PeerId;
-    public long EchoTimestamp;
-    public long SendTimestamp;
-}
-
-public struct PingPongMessage
-{
-    public const int MinimumLength = 16; // 8 + 8
-    public long ResponderNonce;
-    public long EchoTimestamp;
-}
-
-public enum DisconnectReason : byte
-{
-    Unknown = 0,
-}
-
-public struct DisconnectMessage
-{
-    public const int MinimumLength = 1;
-    public DisconnectReason Reason;
-}
-
-public struct PeerInput
-{
-    public const int MinimumLength = 4; // 2 + 2
-    public InputButtons Buttons;
-    public ushort TurretAim;
-}
-
-public struct InputMessage
-{
-    public const int MinimumLength = 5; // 4 + 1
-    public uint InputTick;
-    public byte InputCount; // send the last `InputCount` inputs; 0 is allowed
-    public PeerInput[] Inputs; // ascending order; inputs for `InputTick` are last; array can be oversized (length > `InputCount`)
-}
-
-public struct StateHashMessage
-{
-    public const int MinimumLength = 12; // 4 + 8
-    public uint Tick;
-    public ulong Hash;
-}
-
-public struct AdvantageMessage
-{
-    public const int MinimumLength = 8; // 4 + 4
-    public uint SeqTick; // current tick
-    public uint AckTick; // highest tick from remote where we received inputs
-}
-
-public sealed class GameProtocolSerializer
-{
-    public bool TryReadPacketHeader(ReadOnlySpan<byte> buffer, out GameProtocolHeader header)
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out GameProtocolHeader header, out int bytesRead)
     {
-        if (buffer.Length < header.MinimumLength)
+        if (buffer.Length < GameProtocolHeader.MinimumLength)
         {
             header = default;
+            bytesRead = 0;
             return false;
         }
 
@@ -116,11 +18,11 @@ public sealed class GameProtocolSerializer
         header.MinorVersion = buffer[2];
         header.Flags = buffer[3];
         header.SessionId = BinaryPrimitives.ReadInt32BigEndian(buffer[4..8]);
-
+        bytesRead = 8;
         return true;
     }
 
-    public bool TryWritePacketHeader(ref GameProtocolHeader header, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref GameProtocolHeader header, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < GameProtocolHeader.MinimumLength)
         {
@@ -136,22 +38,27 @@ public sealed class GameProtocolSerializer
         bytesWritten = 8;
         return true;
     }
+}
 
-    public bool TryReadMessageHeader(ReadOnlySpan<byte> buffer, out MessageHeader header)
+partial struct MessageHeader
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out MessageHeader header, out int bytesRead)
     {
         if (buffer.Length < MessageHeader.MinimumLength)
         {
             header = default;
+            bytesRead = 0;
             return false;
         }
 
         header = new MessageHeader();
         header.Type = (MessageType)BinaryPrimitives.ReadInt32BigEndian(buffer[0..4]);
         header.Length = BinaryPrimitives.ReadInt32BigEndian(buffer[4..8]);
+        bytesRead = 8;
         return true;
     }
 
-    public bool TryWriteMessageHeader(ref MessageHeader header, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref MessageHeader header, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < MessageHeader.MinimumLength)
         {
@@ -164,12 +71,16 @@ public sealed class GameProtocolSerializer
         bytesWritten = 8;
         return true;
     }
+}
 
-    public bool TryReadPingMessage(ReadOnlySpan<byte> buffer, out PingMessage message)
+partial struct PingMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out PingMessage message, out int bytesRead)
     {
         if (buffer.Length < PingMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
@@ -177,10 +88,11 @@ public sealed class GameProtocolSerializer
         message.Nonce = BinaryPrimitives.ReadInt64BigEndian(buffer[0..8]);
         message.PeerId = BinaryPrimitives.ReadInt64BigEndian(buffer[8..16]);
         message.SendTimestamp = BinaryPrimitives.ReadInt64BigEndian(buffer[16..24]);
+        bytesRead = 24;
         return true;
     }
 
-    public bool TryWritePingMessage(ref PingMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref PingMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < PingMessage.MinimumLength)
         {
@@ -203,15 +115,20 @@ public sealed class GameProtocolSerializer
 
         return true;
     }
+}
 
-    public bool TryReadPongMessage(ReadOnlySpan<byte> buffer, out PongMessage message)
+partial struct PongMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out PongMessage message, out int bytesRead)
     {
         if (buffer.Length < PongMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
+        int initialLength = buffer.Length;
         message = new PongMessage();
 
         message.InitiatorNonce = BinaryPrimitives.ReadInt64BigEndian(buffer[..8]);
@@ -229,10 +146,11 @@ public sealed class GameProtocolSerializer
         message.SendTimestamp = BinaryPrimitives.ReadInt64BigEndian(buffer[..8]);
         buffer = buffer[8..];
 
+        bytesRead = initialLength - buffer.Length;
         return true;
     }
 
-    public bool TryWritePongMessage(ref PongMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref PongMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < PongMessage.MinimumLength)
         {
@@ -260,22 +178,27 @@ public sealed class GameProtocolSerializer
         bytesWritten = initialLength - buffer.Length;
         return true;
     }
+}
 
-    public bool TryReadPingPongMessage(ReadOnlySpan<byte> buffer, out PingPongMessage message)
+partial struct PingPongMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out PingPongMessage message, out int bytesRead)
     {
         if (buffer.Length < PingPongMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
         message = new PingPongMessage();
         message.ResponderNonce = BinaryPrimitives.ReadInt64BigEndian(buffer[0..8]);
         message.EchoTimestamp = BinaryPrimitives.ReadInt64BigEndian(buffer[8..16]);
+        bytesRead = 16;
         return true;
     }
 
-    public bool TryWritePingPongMessage(ref PingPongMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref PingPongMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < PingPongMessage.MinimumLength)
         {
@@ -288,21 +211,26 @@ public sealed class GameProtocolSerializer
         bytesWritten = 16;
         return true;
     }
+}
 
-    public bool TryReadDisconnectMessage(ReadOnlySpan<byte> buffer, out DisconnectMessage message)
+partial struct DisconnectMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out DisconnectMessage message, out int bytesRead)
     {
         if (buffer.Length < DisconnectMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
         message = new DisconnectMessage();
         message.Reason = (DisconnectReason)buffer[0];
+        bytesRead = 1;
         return true;
     }
 
-    public bool TryWriteDisconnectMessage(ref DisconnectMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref DisconnectMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < DisconnectMessage.MinimumLength)
         {
@@ -314,15 +242,20 @@ public sealed class GameProtocolSerializer
         bytesWritten = 1;
         return true;
     }
+}
 
-    public bool TryReadInputMessage(ReadOnlySpan<byte> buffer, out InputMessage message)
+partial struct InputMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out InputMessage message, out int bytesRead)
     {
         if (buffer.Length < InputMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
+        int initialLength = buffer.Length;
         message = new InputMessage();
 
         message.InputTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[..4]);
@@ -330,11 +263,6 @@ public sealed class GameProtocolSerializer
 
         message.InputCount = buffer[0];
         buffer = buffer[1..];
-
-        if (message.InputCount < 0)
-        {
-            throw new InvalidOperationException();
-        }
 
         message.Inputs = new PeerInput[message.InputCount];
         for (int i = 0; i < message.InputCount; i++)
@@ -350,16 +278,12 @@ public sealed class GameProtocolSerializer
             buffer = buffer[2..];
         }
 
+        bytesRead = initialLength - buffer.Length;
         return true;
     }
 
-    public bool TryWriteInputMessage(ref InputMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref InputMessage message, Span<byte> buffer, out int bytesWritten)
     {
-        if (message.InputCount < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(message.InputCount));
-        }
-
         if (buffer.Length < InputMessage.MinimumLength)
         {
             bytesWritten = 0;
@@ -383,7 +307,7 @@ public sealed class GameProtocolSerializer
             buffer = buffer[2..];
 
             if (buffer.Length < 2) goto Fail;
-            BinaryPrimitives.WriteUInt16BigEndian(buffer[..2], (ushort)peerInput.Buttons);
+            BinaryPrimitives.WriteUInt16BigEndian(buffer[..2], (ushort)peerInput.TurretAim);
             buffer = buffer[2..];
         }
 
@@ -394,21 +318,26 @@ public sealed class GameProtocolSerializer
         bytesWritten = initialLength - buffer.Length;
         return false;
     }
+}
 
-    public bool TryReadStateHashMessage(ReadOnlySpan<byte> buffer, out StateHashMessage message)
+partial struct StateHashMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out StateHashMessage message, out int bytesRead)
     {
         if (buffer.Length < StateHashMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
         message = new StateHashMessage();
         message.Tick = BinaryPrimitives.ReadUInt32BigEndian(buffer[0..4]);
         message.Hash = BinaryPrimitives.ReadUInt64BigEndian(buffer[4..12]);
+        bytesRead = 12;
         return true;
     }
-    public bool TryWriteStateHashMessage(ref StateHashMessage message, Span<byte> buffer, out int bytesWritten)
+    public bool TryWrite(ref StateHashMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < StateHashMessage.MinimumLength)
         {
@@ -421,22 +350,27 @@ public sealed class GameProtocolSerializer
         bytesWritten = 12;
         return true;
     }
+}
 
-    public bool TryReadAdvantageMessage(ReadOnlySpan<byte> buffer, out AdvantageMessage message)
+partial struct AdvantageMessage
+{
+    public static bool TryRead(ReadOnlySpan<byte> buffer, out AdvantageMessage message, out int bytesRead)
     {
         if (buffer.Length < AdvantageMessage.MinimumLength)
         {
             message = default;
+            bytesRead = 0;
             return false;
         }
 
         message = new AdvantageMessage();
         message.SeqTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[0..4]);
         message.AckTick = BinaryPrimitives.ReadUInt32BigEndian(buffer[4..8]);
+        bytesRead = 8;
         return true;
     }
 
-    public bool TryWriteAdvantageMessage(ref AdvantageMessage message, Span<byte> buffer, out int bytesWritten)
+    public static bool TryWrite(ref AdvantageMessage message, Span<byte> buffer, out int bytesWritten)
     {
         if (buffer.Length < AdvantageMessage.MinimumLength)
         {
