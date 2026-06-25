@@ -1,0 +1,13 @@
+public interface IDatagramTransport
+{
+    // Bind to a local endpoint; required before send/receive
+    void Bind(EndPoint local);
+
+    // Send one datagram. Returns false if the OS refuses (queue full, etc.).
+    bool TrySend(ReadOnlySpan<byte> datagram, EndPoint destination);
+
+    // Try to receive one datagram into the buffer. Returns false if nothing pending.
+    bool TryReceive(Span<byte> buffer, out int bytesRead, out EndPoint source);
+
+    void Close();
+}
