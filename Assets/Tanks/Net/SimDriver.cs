@@ -3,40 +3,52 @@ using Tanks.Sim;
 namespace Tanks.Net
 {
     /// <summary>
-    /// The pure, Unity-free netcode driver. Owns the live <see cref="GameState"/>, a rollback-
-    /// ready <see cref="StateHistory"/>, and the fixed-tick loop that advances the deterministic
-    /// simulation independently of frame rate. Everything it needs is injected (arena, input
-    /// sources, tick rate) — no statics, no UnityEngine, no wall-clock. The Unity shell
-    /// (SimRunner) just forwards <see cref="Advance"/>; tests drive it directly.
-    ///
-    /// Today it samples every player locally (couch-coop). The netcode work in the session
-    /// (send/receive over an <see cref="ITransport"/>, lockstep, rollback) layers onto this.
+    /// The couch-coop driver: every player sampled from a local input source, no network.
+    /// Pure and Unity-free like its networked sibling <see cref="RollbackDriver"/>; the
+    /// Unity shell just forwards <see cref="Advance"/>, tests drive it directly.
     /// </summary>
-    public sealed class SimDriver
+    public sealed class SimDriver : IMatchDriver
     {
-        public GameState State { get; private set; } = null!; // set by ResetMatch in the ctor
-        public Arena Arena { get; }
-        public ulong LastHash { get; private set; }
-        public StateHistory History { get; }
-
-        public SimConfig Config { get; }
+        public GameState State => _state;
+        public Sim.Arena Arena => _arena;
+        public ulong LastHash => _lastHash;
+        public StateHistory History => _history;
+        public SimConfig Config => _config;
 
         private readonly Simulation _simulation;
         private readonly IInputSource[] _sources;
         private readonly PlayerInput[] _inputs;
         private double _accumulator;
 
+        private GameState _state;
+        private Arena _arena;
+        private ulong _lastHash;
+        private StateHistory _history;
+        private SimConfig _config;
+        
         private const int MaxStepsPerFrame = 5; // clamp to avoid a death spiral after a hitch
-
-        public SimDriver(SimConfig config, Simulation simulation, Arena arena, IInputSource[] sources, int historyCapacity)
+        
+        public SimDriver(SimConfig config, Simulation simulation, Sim.Arena arena, IInputSource[] sources)
         {
-            Config = config;
+            _config = config;
             _simulation = simulation;
-            Arena = arena;
+            _arena = arena;
             _sources = sources;
             _inputs = new PlayerInput[sources.Length];
-            History = new StateHistory(historyCapacity);
+            _history = new StateHistory(256);
             ResetMatch();
+        }
+
+        public bool AllowsLocalReset => true;
+
+        public void ResetMatch()
+        {
+            _state = GameState.CreateInitial(Config);
+            for (int i = 0; i < _sources.Length; i++)
+                _sources[i].Reset();
+            _history.Clear();
+            _lastHash = _history.Record(State);
+            _accumulator = 0;
         }
 
         /// <summary>
@@ -64,22 +76,7 @@ namespace Tanks.Net
 
             _simulation.Tick(State, Arena, _inputs);
 
-            LastHash = State.Hash();
-            History.Record(State);
+            _lastHash = _history.Record(State);
         }
-
-        public void ResetMatch()
-        {
-            State = GameState.CreateInitial(Config);
-            for (int i = 0; i < _sources.Length; i++)
-                _sources[i].Reset();
-            LastHash = State.Hash();
-            History.Clear();
-            History.Record(State);
-            _accumulator = 0;
-        }
-
-        /// <summary>The input most recently applied for a player (for the HUD).</summary>
-        public PlayerInput InputOf(int player) => _inputs[player];
     }
 }

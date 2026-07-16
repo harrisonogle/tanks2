@@ -1,0 +1,16 @@
+{
+    "name": "Tanks.Discovery",
+    "rootNamespace": "Tanks.Net",
+    "references": [
+        "Tanks.Protocol"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

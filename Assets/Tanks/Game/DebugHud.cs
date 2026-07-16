@@ -1,3 +1,4 @@
+using Tanks.Net;
 using Tanks.Sim;
 using UnityEngine;
 
@@ -30,13 +31,28 @@ namespace Tanks.Game
             var state = _runner != null ? _runner.State : null;
             if (state == null) return;
 
-            GUILayout.BeginArea(new Rect(10, 10, 440, 320), GUI.skin.box);
+            var net = _runner.Driver as RollbackDriver;
 
-            GUILayout.Label("TANKS - local sandbox (no netcode yet)");
+            GUILayout.BeginArea(new Rect(10, 10, 440, net != null ? 420 : 320), GUI.skin.box);
+
+            GUILayout.Label(net != null ? $"TANKS - online (you are P{net.LocalPlayer + 1})" : "TANKS - local match");
             GUILayout.Space(4);
             GUILayout.Label($"Tick:       {state.Tick}");
             GUILayout.Label($"State hash: {(_runner.LastHash & 0xFFFFFFFFUL):X8}");
             GUILayout.Label($"FPS:        {(Time.smoothDeltaTime > 0f ? 1f / Time.smoothDeltaTime : 0f):0}");
+
+            if (net != null)
+            {
+                // The netcode, made visible: how far ahead of the remote we're simulating,
+                // how often predictions were wrong, and whether the sims still agree.
+                GUILayout.Space(4);
+                GUILayout.Label($"confirmed:  {net.ConfirmedTick}  (predicting {net.CurrentTick - net.ConfirmedTick} ticks ahead)");
+                GUILayout.Label($"remote in:  {net.RemoteFrontier}   acked: {net.AckedTick}");
+                GUILayout.Label($"rollbacks:  {net.RollbackCount}  (last depth {net.LastRollbackDepth}, total {net.TotalRolledBackTicks} ticks)");
+                GUILayout.Label($"stalls:     {net.StalledSteps}");
+                if (net.DesyncDetected)
+                    GUILayout.Label($"!! DESYNC at tick {net.DesyncTick} - sims have diverged !!");
+            }
 
             GUILayout.Space(4);
             for (int i = 0; i < _runner.Config.PlayerCount; i++)
@@ -56,7 +72,7 @@ namespace Tanks.Game
             {
                 string msg = aliveCount == 0 ? "Draw!" : $"P{WinnerIndex(state) + 1} wins!";
                 GUILayout.Space(2);
-                GUILayout.Label($">> {msg}  (press R to reset)");
+                GUILayout.Label(net == null ? $">> {msg}  (press R to reset)" : $">> {msg}");
             }
 
             GUILayout.Space(8);
@@ -65,8 +81,6 @@ namespace Tanks.Game
             GUILayout.Label("R (keyboard) or Start/Options (gamepad): reset match");
             GUILayout.Label("H (keyboard) or Select (gamepad): hide this HUD");
 
-            GUILayout.Space(8);
-            GUILayout.Label("Netcode seam ready in SimRunner (local only for now).");
 
             GUILayout.EndArea();
         }

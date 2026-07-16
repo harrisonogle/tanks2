@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/Sim/">
+    <Project Path="Sim/src/Tanks.Sim.csproj" />
+    <Project Path="Sim/tests/Tanks.Sim.Tests.csproj" />
+    <Project Path="Sim/samples/Tanks.Sim.Driver.csproj" />
+  </Folder>
+  <Folder Name="/Protocol/">
+    <Project Path="Protocol/src/Tanks.Protocol.csproj" />
+    <Project Path="Protocol/tests/Tanks.Protocol.Tests.csproj" />
+    <Project Path="Protocol/samples/Tanks.Protocol.Driver.csproj" />
+  </Folder>
+  <Folder Name="/Discovery/">
+    <Project Path="Discovery/src/Tanks.Discovery.csproj" />
+    <Project Path="Discovery/tests/Tanks.Discovery.Tests.csproj" />
+    <Project Path="Discovery/samples/Tanks.Discovery.Driver.csproj" />
+  </Folder>
+  <Folder Name="/Net/">
+    <Project Path="Net/src/Tanks.Net.csproj" />
+    <Project Path="Net/tests/Tanks.Net.Tests.csproj" />
+    <Project Path="Net/samples/Tanks.Net.Driver.csproj" />
+  </Folder>
+</Solution>

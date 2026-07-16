@@ -2,11 +2,13 @@
     "name": "Tanks.Net",
     "rootNamespace": "Tanks.Net",
     "references": [
+        "Tanks.Discovery",
+        "Tanks.Protocol",
         "Tanks.Sim"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,

@@ -4,6 +4,8 @@
     "references": [
         "Tanks.Sim",
         "Tanks.Net",
+        "Tanks.Protocol",
+        "Tanks.Discovery",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],

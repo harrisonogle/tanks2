@@ -14,6 +14,10 @@ namespace Tanks.Game
     /// </summary>
     public static class Bootstrap
     {
+        // Both peers default to the same port; NetworkHost walks forward if it's taken
+        // (e.g. Editor + standalone build on one machine).
+        private const int DefaultPort = 47777;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
         {
@@ -43,19 +47,70 @@ namespace Tanks.Game
             // The game object: simulation runner (shell) + view + HUD all live here.
             var root = new GameObject("Tanks");
             var runner = root.AddComponent<SimRunner>();
-            root.AddComponent<GameView>();
-            root.AddComponent<DebugHud>();
+            var gameView = root.AddComponent<GameView>();
+            var debugHud = root.AddComponent<DebugHud>();
+            
+            // Protocol service: UDP socket + Network poll thread, alive for the app's
+            // lifetime (a protocol is a service that's always running, not per-match).
+            var host = root.AddComponent<NetworkHost>();
+            host.Initialize(DefaultPort, new UnityLog(LogLevel.Debug));
 
-            // Composition root: build the pure netcode driver by hand and inject it. Couch-coop
-            // for now — both players sampled locally. The session swaps in transport + discovery
-            // and reduces each peer to one local source plus remote input fed over the wire.
+            // Game-thread pump for the protocol pipe. SimRunner polls it every frame;
+            // its lifecycle callbacks below are what start and end networked matches.
+            var remote = new RemoteState(host.Network, new UnityLog(LogLevel.Debug));
+            runner.Remote = remote;
+
+            // Discovery shim: the connect screen *is* the discovery protocol for now —
+            // a human carries (PeerId, endpoint) between machines. Real discovery slots
+            // in behind IPeerDiscovery later without the consumer changing.
+            var discovery = new ManualPeerDiscovery();
+
+            // Pre-match screen. The match doesn't start until the player picks a mode.
+            var screen = root.AddComponent<ConnectScreen>();
+            screen.LocalPeerId = host.Network.LocalPeerId.ToVerboseString();
+            screen.LocalPort = host.BoundPort;
+            screen.PlayLocalRequested = () =>
+            {
+                runner.StartMatch(BuildCouchCoopDriver(config));
+            };
+            screen.ConnectRequested = (peerId, endPoint) =>
+            {
+                discovery.Set(peerId, endPoint);
+                foreach (PeerDiscoveryResult peer in discovery.GetPeers())
+                    host.Network.Connect(peer.PeerId, peer.EndPoint);
+                screen.SetStatus("Connecting… (handshake in flight; [Net] logs in the Console)");
+            };
+
+            remote.OnEstablished = session =>
+            {
+                // Same deterministic rule as the protocol's simultaneous-open tiebreak:
+                // lower PeerId is player 0. The local player always plays with the
+                // primary (player-0) bindings, whichever sim slot they control.
+                int localPlayer = host.Network.LocalPeerId.CompareTo(session.RemotePeerId) < 0 ? 0 : 1;
+                var driver = new RollbackDriver(
+                    config, new Simulation(config), Arena.CreateDefault(config),
+                    new UnityInputSource(0, config), localPlayer, session, remote,
+                    new UnityLog(LogLevel.Debug));
+                Debug.Log($"Session established with {session.RemotePeerId}; local player = P{localPlayer + 1}.");
+                screen.Hide();
+                runner.StartMatch(driver);
+            };
+            remote.OnClosed = session =>
+            {
+                runner.EndMatch();
+                screen.Show($"Disconnected (peer: {session.PeerReason}, end: {session.EndReason}).");
+            };
+        }
+
+        /// <summary>Both players sampled locally — the offline mode, and the pre-netcode default.</summary>
+        private static SimDriver BuildCouchCoopDriver(SimConfig config)
+        {
             var sources = new IInputSource[]
             {
                 new UnityInputSource(0, config),
                 new UnityInputSource(1, config),
             };
-            var driver = new SimDriver(config, new Simulation(config), Arena.CreateDefault(config), sources, historyCapacity: 256);
-            runner.Driver = driver;
+            return new SimDriver(config, new Simulation(config), Arena.CreateDefault(config), sources);
         }
     }
 }

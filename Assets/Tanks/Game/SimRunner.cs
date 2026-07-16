@@ -5,33 +5,57 @@ using UnityEngine;
 namespace Tanks.Game
 {
     /// <summary>
-    /// Thin Unity shell over the pure <see cref="SimDriver"/>. It holds no gameplay logic: it
-    /// forwards the per-frame tick to the driver (marshaling Unity's frame time across), routes
-    /// the reset control, and re-exposes the driver's read-only state for the view and HUD.
-    ///
-    /// The driver is built and injected by <see cref="Bootstrap"/> (the composition root) right
-    /// after this component is added, before the first frame. The netcode work in the session
-    /// (transport, discovery, lockstep, rollback) lives in the driver, not here.
+    /// Represents a single match between peers, plus the per-frame pump of the protocol
+    /// pipe. The pump runs every frame — even with no match — because session lifecycle
+    /// events (the thing that STARTS a match) arrive through it. Ordering per frame is
+    /// deliberate and load-bearing: Poll (network events settle) then Advance (sim ticks).
     /// </summary>
     public sealed class SimRunner : MonoBehaviour
     {
-        private SimDriver _driver;
+        // A match is in progress iff this is not null.
+        // Transition from null to non-null effectively starts the match.
+        private IMatchDriver _driver;
+        private RemoteState _remote;
 
         /// <summary>Injected by Bootstrap immediately after AddComponent, before the first Update.</summary>
-        public SimDriver Driver { set => _driver = value; }
+        public RemoteState Remote { set => _remote = value; }
+
+        /// <summary>The running match driver, if any (DebugHud peeks for netcode stats).</summary>
+        public IMatchDriver Driver => _driver;
+
+        public void StartMatch(IMatchDriver driver)
+        {
+            if (_driver != null)
+            {
+                Debug.Log("Match already in progress.");
+                return;
+            }
+
+            Debug.Log("Starting match.");
+            _driver = driver;
+        }
+
+        public void EndMatch()
+        {
+            if (_driver == null) return;
+            Debug.Log("Match ended.");
+            _driver = null;
+        }
 
         // Read-only surface consumed by GameView / DebugHud.
         public GameState State => _driver?.State;
         public Arena Arena => _driver?.Arena;
         public SimConfig Config => _driver?.Config;
-        public ulong LastHash => _driver != null ? _driver.LastHash : 0UL;
-        public StateHistory History => _driver?.History;
+        public ulong LastHash => _driver?.LastHash ?? 0UL;
 
         private void Update()
         {
+            _remote?.Poll();
+
             if (_driver == null) return;
 
-            if (InputSampler.IsResetRequested())
+            // R resets couch-coop only; resetting one side of a networked match = desync.
+            if (_driver.AllowsLocalReset && InputSampler.IsResetRequested())
                 _driver.ResetMatch();
 
             _driver.Advance(Time.deltaTime);

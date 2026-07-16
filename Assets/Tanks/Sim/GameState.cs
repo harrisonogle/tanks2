@@ -1,156 +1,129 @@
 using System;
 
-namespace Tanks.Sim
-{
-    public struct Tank
-    {
-        public Fixed X;
-        public Fixed Y;
-        public int Angle;         // body facing (movement direction)
-        public int TurretAngle;   // turret facing (fire direction); set absolute from PlayerInput each tick
-        public int Health;
-        public int FireCooldown;  // ticks until allowed to fire again
-        public int DashTicks;     // remaining ticks of the speed burst (>0 = currently dashing)
-        public int DashCooldown;  // ticks until allowed to dash again
+namespace Tanks.Sim;
 
-        public readonly bool Alive => Health > 0;
+/// <summary>
+/// The complete, authoritative state of the match at one tick. This is the only thing
+/// the simulation reads/writes. Because it is fully self-contained and cheaply cloneable,
+/// rollback is just "keep old copies and re-run <see cref="Simulation.Tick"/>".
+/// </summary>
+public sealed class GameState
+{
+    public uint Tick;
+    public uint Rng;            // deterministic xorshift seed (reserved for future use; hashed for safety)
+    public Tank[] Tanks;        // length config.PlayerCount
+    public Bullet[] Bullets;    // length config.MaxBullets
+
+    // All construction goes through here, so the arrays are never null. Private on purpose —
+    // build via CreateInitial / Clone; you can't `new GameState()` into an invalid (unsized) state.
+    private GameState(int tankCount, int bulletCount)
+    {
+        Tanks = new Tank[tankCount];
+        Bullets = new Bullet[bulletCount];
     }
 
-    public struct Bullet
+    public static GameState CreateInitial(SimConfig config, uint seed = 0x1234_5678u)
     {
-        public bool Active;
-        public Fixed X;
-        public Fixed Y;
-        public Fixed VX;
-        public Fixed VY;
-        public int Owner;
-        public int BouncesLeft;
-        public int Life;   // ticks remaining
+        var s = new GameState(config.PlayerCount, config.MaxBullets)
+        {
+            Tick = 0,
+            Rng = seed == 0 ? 1u : seed,
+        };
+
+        for (int i = 0; i < config.PlayerCount; i++)
+        {
+            var spawn = config.SpawnPosition(i);
+            int angle = config.SpawnAngle(i);
+            s.Tanks[i] = new Tank
+            {
+                X = spawn.X,
+                Y = spawn.Y,
+                Angle = angle,
+                TurretAngle = angle,   // turret starts aligned with body facing
+                Health = config.TankMaxHealth,
+                FireCooldown = 0,
+                DashTicks = 0,
+                DashCooldown = 0,
+            };
+        }
+        return s;
+    }
+
+    /// <summary>Deep copy. Used to snapshot states for the rollback ring buffer.</summary>
+    public GameState Clone()
+    {
+        var c = new GameState(Tanks.Length, Bullets.Length)
+        {
+            Tick = Tick,
+            Rng = Rng,
+        };
+        Array.Copy(Tanks, c.Tanks, Tanks.Length);
+        Array.Copy(Bullets, c.Bullets, Bullets.Length);
+        return c;
+    }
+
+    /// <summary>Copy another state's contents into this one without allocating (for pooling later).</summary>
+    public void CopyFrom(GameState other)
+    {
+        Tick = other.Tick;
+        Rng = other.Rng;
+        Array.Copy(other.Tanks, Tanks, Tanks.Length);
+        Array.Copy(other.Bullets, Bullets, Bullets.Length);
+    }
+
+    public int CountAlive()
+    {
+        int n = 0;
+        for (int i = 0; i < Tanks.Length; i++)
+            if (Tanks[i].Alive) n++;
+        return n;
     }
 
     /// <summary>
-    /// The COMPLETE, authoritative state of the match at one tick. This is the only thing
-    /// the simulation reads/writes. Because it is fully self-contained and cheaply cloneable,
-    /// rollback is just "keep old copies and re-run <see cref="Simulation.Tick"/>".
+    /// Deterministic 64-bit fingerprint of the full state. If two machines disagree on
+    /// this for the same tick, the simulation has diverged — the single most important
+    /// signal when debugging rollback. The debug HUD shows the low bits live.
     /// </summary>
-    public sealed class GameState
+    public ulong Hash()
     {
-        public uint Tick;
-        public uint Rng;            // deterministic xorshift seed (reserved for future use; hashed for safety)
-        public Tank[] Tanks;        // length config.PlayerCount
-        public Bullet[] Bullets;    // length config.MaxBullets
-
-        // All construction goes through here, so the arrays are never null. Private on purpose —
-        // build via CreateInitial / Clone; you can't `new GameState()` into an invalid (unsized) state.
-        private GameState(int tankCount, int bulletCount)
+        ulong h = 14695981039346656037UL; // FNV offset basis
+        h = Mix(h, (int)Tick);
+        h = Mix(h, (int)Rng);
+        for (int i = 0; i < Tanks.Length; i++)
         {
-            Tanks = new Tank[tankCount];
-            Bullets = new Bullet[bulletCount];
+            ref readonly Tank t = ref Tanks[i];
+            h = Mix(h, t.X.Raw);
+            h = Mix(h, t.Y.Raw);
+            h = Mix(h, t.Angle);
+            h = Mix(h, t.TurretAngle);
+            h = Mix(h, t.Health);
+            h = Mix(h, t.FireCooldown);
+            h = Mix(h, t.DashTicks);
+            h = Mix(h, t.DashCooldown);
         }
-
-        public static GameState CreateInitial(SimConfig config, uint seed = 0x1234_5678u)
+        for (int i = 0; i < Bullets.Length; i++)
         {
-            var s = new GameState(config.PlayerCount, config.MaxBullets)
-            {
-                Tick = 0,
-                Rng = seed == 0 ? 1u : seed,
-            };
-
-            for (int i = 0; i < config.PlayerCount; i++)
-            {
-                var spawn = config.SpawnPosition(i);
-                int angle = config.SpawnAngle(i);
-                s.Tanks[i] = new Tank
-                {
-                    X = spawn.X,
-                    Y = spawn.Y,
-                    Angle = angle,
-                    TurretAngle = angle,   // turret starts aligned with body facing
-                    Health = config.TankMaxHealth,
-                    FireCooldown = 0,
-                    DashTicks = 0,
-                    DashCooldown = 0,
-                };
-            }
-            return s;
+            ref readonly Bullet b = ref Bullets[i];
+            h = Mix(h, b.Active ? 1 : 0);
+            if (!b.Active) continue; // inactive slots have no meaningful payload
+            h = Mix(h, b.X.Raw);
+            h = Mix(h, b.Y.Raw);
+            h = Mix(h, b.VX.Raw);
+            h = Mix(h, b.VY.Raw);
+            h = Mix(h, b.Owner);
+            h = Mix(h, b.BouncesLeft);
+            h = Mix(h, b.Life);
         }
+        return h;
+    }
 
-        /// <summary>Deep copy. Used to snapshot states for the rollback ring buffer.</summary>
-        public GameState Clone()
+    private static ulong Mix(ulong h, int value)
+    {
+        unchecked
         {
-            var c = new GameState(Tanks.Length, Bullets.Length)
-            {
-                Tick = Tick,
-                Rng = Rng,
-            };
-            Array.Copy(Tanks, c.Tanks, Tanks.Length);
-            Array.Copy(Bullets, c.Bullets, Bullets.Length);
-            return c;
+            h ^= (uint)value;
+            h *= 1099511628211UL; // FNV prime
         }
-
-        /// <summary>Copy another state's contents into this one without allocating (for pooling later).</summary>
-        public void CopyFrom(GameState other)
-        {
-            Tick = other.Tick;
-            Rng = other.Rng;
-            Array.Copy(other.Tanks, Tanks, Tanks.Length);
-            Array.Copy(other.Bullets, Bullets, Bullets.Length);
-        }
-
-        public int CountAlive()
-        {
-            int n = 0;
-            for (int i = 0; i < Tanks.Length; i++)
-                if (Tanks[i].Alive) n++;
-            return n;
-        }
-
-        /// <summary>
-        /// Deterministic 64-bit fingerprint of the full state. If two machines disagree on
-        /// this for the same tick, the simulation has diverged — the single most important
-        /// signal when debugging rollback. The debug HUD shows the low bits live.
-        /// </summary>
-        public ulong Hash()
-        {
-            ulong h = 14695981039346656037UL; // FNV offset basis
-            h = Mix(h, (int)Tick);
-            h = Mix(h, (int)Rng);
-            for (int i = 0; i < Tanks.Length; i++)
-            {
-                ref readonly Tank t = ref Tanks[i];
-                h = Mix(h, t.X.Raw);
-                h = Mix(h, t.Y.Raw);
-                h = Mix(h, t.Angle);
-                h = Mix(h, t.TurretAngle);
-                h = Mix(h, t.Health);
-                h = Mix(h, t.FireCooldown);
-                h = Mix(h, t.DashTicks);
-                h = Mix(h, t.DashCooldown);
-            }
-            for (int i = 0; i < Bullets.Length; i++)
-            {
-                ref readonly Bullet b = ref Bullets[i];
-                h = Mix(h, b.Active ? 1 : 0);
-                if (!b.Active) continue; // inactive slots have no meaningful payload
-                h = Mix(h, b.X.Raw);
-                h = Mix(h, b.Y.Raw);
-                h = Mix(h, b.VX.Raw);
-                h = Mix(h, b.VY.Raw);
-                h = Mix(h, b.Owner);
-                h = Mix(h, b.BouncesLeft);
-                h = Mix(h, b.Life);
-            }
-            return h;
-        }
-
-        private static ulong Mix(ulong h, int value)
-        {
-            unchecked
-            {
-                h ^= (uint)value;
-                h *= 1099511628211UL; // FNV prime
-            }
-            return h;
-        }
+        return h;
     }
 }
