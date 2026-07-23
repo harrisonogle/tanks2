@@ -1,0 +1,19 @@
+{
+    "name": "Tanks.Engine",
+    "rootNamespace": "Tanks.Engine",
+    "references": [
+        "Tanks.Discovery",
+        "Tanks.Net",
+        "Tanks.Protocol",
+        "Tanks.Sim"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

@@ -33,14 +33,32 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 
 ## How to verify changes
 
-- **Sim/Net logic (fast, do this often):**
-  `dotnet test "SimTests~/SimTests.csproj"`  — pure C#, no Unity, ~seconds.
+- **Everything pure C# at once:** `dotnet test "sandbox~/Sandbox.slnx"` — each Assets
+  library has a mirror project under `sandbox~/<Lib>/{src,tests,samples}` (deps via
+  ProjectReference, mirroring the asmdefs).
+- **Sim only (determinism canary — fast, do this often):**
+  `dotnet test "sandbox~/Sim/tests/Tanks.Sim.Tests.csproj"`  — pure C#, no Unity, ~seconds.
+- **Session protocol (crypto, wire, sessions):**
+  `dotnet test "sandbox~/Protocol/tests/Tanks.Protocol.Tests.csproj"`  — pure C#, ~15s.
+- **Discovery shim + real-socket loopback handshake:**
+  `dotnet test "sandbox~/Discovery/tests/Tanks.Discovery.Tests.csproj"`
+- **Protocol on UNITY'S runtime (Mono BCL quirks — PNSE from crypto APIs, etc.), headless:**
+  add `-executeMethod Tanks.Editor.ProtocolSmokeTest.Run` to the batch-mode command below
+  (drop `-quit`; the method exits itself). Exit 0 + "PROTOCOL SMOKE PASSED" in the log = a
+  real two-Network handshake ran over NativeTransport on loopback, inside the Editor's Mono.
 - **Unity compiles (the `Game` layer):** batch-mode import/compile, then check for `error CS`
-  and that `Library/ScriptAssemblies/Tanks.*.dll` were produced:
+  and that `Library/ScriptAssemblies/Tanks.*.dll` were produced.
+  Windows:
   ```
   & "C:\Program Files\Unity\Hub\Editor\6000.3.17f1\Editor\Unity.exe" `
     -batchmode -quit -nographics -accept-apiupdate `
     -projectPath "<repo>" -logFile "<repo>\unity_import.log"
+  ```
+  macOS:
+  ```
+  "/Applications/Unity/Hub/Editor/6000.3.17f1/Unity.app/Contents/MacOS/Unity" \
+    -batchmode -quit -nographics -accept-apiupdate \
+    -projectPath "<repo>" -logFile "<repo>/unity_import.log"
   ```
   (I can't press Play or see rendering — rely on the user for runtime/visual feedback.)
 
@@ -48,6 +66,7 @@ Crude Unity recreation of *Tanks* as an online 1v1. **The point is netcode learn
 
 - Unity **6000.3.17f1** (6.3 LTS), built-in render pipeline, new Input System package
   (`activeInputHandler: 1`). Input is sampled via `UnityEngine.InputSystem` in `InputSampler.cs`.
-- .NET SDK 10 present; `SimTests~` targets `net10.0` and links Sim/Net source via `<Compile Include>`.
+- .NET SDK 10 present; `sandbox~` src projects target `netstandard2.1` (like Unity) and link
+  the `Assets/` sources via `<Compile Include>`; tests/samples target `net10.0`.
 - User: strong C#/systems/networking background, newer to Unity. Explain Unity-isms, not C#.
 - User prefers questions asked **inline in prose**, never via the AskUserQuestion popup.

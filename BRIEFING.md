@@ -7,9 +7,10 @@
 
 This is a crude *Tanks* (Wii) recreation built **specifically to learn netcode**. The
 game itself is already done — a deterministic, locally-playable 1v1 sandbox. **This
-session's job is to make it network-playable: lockstep first, then rollback, then a
-visualization layer that makes the netcode visible on screen.** The graphics will stay
-crude; the netcode is the point.
+session's job is to make it network-playable across two real processes: lockstep first,
+then rollback, then a visualization layer that makes the netcode visible on screen.** Two
+instances find each other on the network, agree on who's who, and exchange inputs. The
+graphics stay crude; the netcode is the point.
 
 ## The plan, and why it's shaped this way
 
@@ -37,6 +38,27 @@ authoritative client-server. So why P2P-rollback first?
 
 The architecture is deliberately set up so phase 2 layers on rather than rewrites.
 
+### Why two separate processes from the start (not "two sims in one process")
+
+An earlier draft of this plan emulated both peers inside one Unity process (split-screen,
+two cameras, layer separation) and bolted on the real transport at the very end. We
+dropped that. Reasons:
+
+- **No throwaway scaffolding.** The split-screen/layer rig exists *only* to fake two
+  peers in one process; running one peer per process makes it unnecessary. We'd rather
+  build the real shape once than build emulation now and clean it up later.
+- **It matches how netcode is actually developed.** Pros run separate instances (Unreal
+  PIE multi-client, Unity Multiplayer Play Mode, or N builds) and degrade a *real*
+  network, rather than co-locating peers.
+- **The reproducibility we'd lose lives better in tests anyway.** The single-process
+  setup's real value was reproducible, side-by-side, single-debugger desync hunting. That
+  belongs in `SimTests~` — two sims, a seeded fake network, hash assertions, pure .NET. So
+  we keep the rigor there and let the interactive runtime be two honest processes.
+
+The cost — debugging a desync across two live processes is harder than in one — is paid
+down by the deterministic test harness: get lockstep/rollback **passing tests** against
+`InProcessNetwork`, then trust the live run.
+
 ## Lay of the land
 
 ```
@@ -45,10 +67,11 @@ Assets/Tanks/
                         Fixed (16.16), Trig (lookup tables), GameState, Simulation.Tick,
                         Arena, Xorshift32
   Net/   Tanks.Net    — also pure C#; ITransport, InProcessNetwork (latency/jitter/loss),
-                        InputCodec (8-byte wire format: tick + player + buttons + turret aim)
+                        InputCodec, and (you'll add) UdpTransport + multicast discovery +
+                        tagged messages. Pure System.Net.Sockets — no Unity dependency.
   Game/  Tanks.Game   — thin Unity layer; Bootstrap (entry point, RuntimeInitialize),
-                        SimRunner (fixed-tick loop + history + the SEAM),
-                        GameView (primitives), DebugHud (IMGUI), InputSampler
+                        SimRunner (per-peer shell), GameView (primitives),
+                        DebugHud (IMGUI), InputSampler
 SimTests~/            — standalone `dotnet test` project linking Sim/Net source.
                         23 tests covering math, gameplay, determinism, network seam.
                         Run with: dotnet test (from repo root or that folder)
@@ -56,8 +79,13 @@ SimTests~/            — standalone `dotnet test` project linking Sim/Net sourc
 
 The two asmdefs `Tanks.Sim` and `Tanks.Net` are marked `noEngineReferences: true`.
 **That constraint is load-bearing** — it's what lets `SimTests~` compile the same `.cs`
-files under plain .NET, and it's what keeps the simulation deterministic. If you find
-yourself wanting to reach for `UnityEngine` or `float` inside Sim/Net, stop.
+files under plain .NET, and it's what keeps the simulation deterministic. The same purity
+is why `UdpTransport`/discovery (plain `System.Net.Sockets`) can live in `Tanks.Net`. If
+you find yourself wanting to reach for `UnityEngine` or `float` inside Sim/Net, stop.
+
+> **Heads-up — the in-Unity compiler is C# 9 / .NET Standard 2.1 / Mono.** `SimTests~`
+> targets `net10.0` and will happily compile newer C#, so it's possible to write Sim/Net
+> source that passes `dotnet test` but **fails the Unity build**. Keep Sim/Net within C# 9.
 
 ## The contract (invariants you cannot break)
 
@@ -66,15 +94,34 @@ yourself wanting to reach for `UnityEngine` or `float` inside Sim/Net, stop.
    `Random.Range` (use `Xorshift32` with seed in `GameState.Rng`), no `UnityEngine` in
    Sim/Net.
 2. **`GameState.Hash()` is the desync canary.** If two peers disagree on the hash for the
-   same confirmed tick, the sim has diverged — fix that *first* before anything else.
+   same **confirmed** tick, the sim has diverged — fix that *first* before anything else.
    `DeterminismTests` enforce this; never let them regress.
-3. **`Tanks.Game` is a view.** It samples input, calls `Simulation.Tick`, and renders.
-   It never contains gameplay rules. Netcode logic also lives in Game (or a new
-   `Tanks.Netcode` module if you want to split it) — but it talks to Sim/Net only
-   through their public APIs.
+3. **`Tanks.Game` is a thin shell over a pure driver.** It samples input, calls
+   `Simulation.Tick`, and renders — never gameplay rules. The netcode loop lives in a
+   **pure C# driver** (a plain class, constructor-injected, unit-testable), and the
+   MonoBehaviour (`SimRunner`) is a humble object that just forwards `Update()` to it and
+   marshals Unity values (`Time.deltaTime`, input, rendering) across. See *Architecture*
+   below. Put new netcode code in a pure class (a `Tanks.Netcode` module is fine), talking
+   to Sim/Net only through public APIs.
 4. **Code-driven setup.** `Bootstrap` builds everything at play time via
    `[RuntimeInitializeOnLoadMethod]`. There are no hand-authored scenes and no inspector
    wiring. Keep it that way — it stays reviewable and version-controllable.
+5. **2 players, full stop.** This is a 1v1. Bake `PlayerCount = 2` in; don't carry
+   generality for N players. It makes discovery and role assignment trivial.
+
+## Architecture: thin Unity shell over a pure driver
+
+The MonoBehaviours are **humble objects** — they hold no logic, they delegate. The netcode
+loop is a plain, Unity-free class you construct and unit-test.
+
+- `Bootstrap` is the **composition root**: it builds the dependency graph by hand (no DI
+  container — the graph is tiny and a container fights IL2CPP/lifetimes). It creates the
+  pure driver, hands it its dependencies, and attaches a thin `SimRunner` that forwards
+  lifecycle calls.
+- **Why the local player index is irreducible:** the `PlayerInput[]` handed to `Simulation.Tick` must be
+  in canonical *global* order (slot 0 = player 0) **identically on both peers**, or they
+  diverge. A "local is always slot 0" convention would desync. So each peer must know its
+  *global* index — and in M1 it comes from discovery (below), not a hardcoded flag.
 
 ## What's already wired (and what's NOT)
 
@@ -94,82 +141,129 @@ Already wired, working, and tested:
 - `SimRunner` ticks at 60 Hz with frame-rate independence, hashes every state, and
   records snapshots into a 256-tick `StateHistory` ring buffer.
 - `InProcessNetwork` — two endpoints, send/receive bytes, tunable
-  `LatencyTicks` / `JitterTicks` / `LossChance`. Reproducible (RNG-seeded).
-- `InputCodec` — 8 bytes per (tick, player, buttons + turret aim) message.
+  `LatencyTicks` / `JitterTicks` / `LossChance`. Reproducible (RNG-seeded). **Keep this
+  forever** — it's the transport your tests and reproducible debugging run on.
+- `InputCodec` — the per-(tick, player, buttons + turret aim) input message.
 - A test (`InputsExchangedOverWireKeepSimsInLockstep`) that already proves two
   independent sims exchanging inputs over the fake wire stay bit-identical for 1000
-  ticks. **This is the loop you're going to build at runtime in `SimRunner` — it's
-  literally already working in a test.** Read it first.
+  ticks. **This is the loop you're going to build at runtime — it's literally already
+  working in a test, and it's the seed of the M2 test gate.** Read it first.
 
-Explicitly NOT wired:
-- `SimRunner` currently samples **both** players locally (couch-coop sandbox).
-- The `Network` field on `SimRunner` exists but doesn't carry any traffic yet.
-- `StateHistory` records but nothing reads it.
-- Look for the `===== NETCODE SEAM =====` comment block in `SimRunner.cs` — that's
-  where you'll be working.
+Explicitly NOT wired (this session's work):
+- `SimRunner` currently samples **both** players locally (couch-coop sandbox) inside one
+  process. M1 replaces that shape.
+- No real transport, no discovery, no role negotiation yet.
+- `StateHistory` records but nothing reads it (rollback in M3 will).
+- Look for the `===== NETCODE SEAM =====` comment block in `SimRunner.cs` — that's the
+  starting point.
 
 ## Roadmap (in order)
 
-Each milestone has an acceptance criterion. Don't move on without it.
+Each milestone has acceptance criteria. Don't move on without them.
 
-### M1 — `Peer` refactor: two sims in one process (warmup; ~30 min)
+### M1 — Two real peers find each other and exchange inputs (the foundation)
 
-The current `Bootstrap` creates ONE `SimRunner` with both players sampled on one
-keyboard. That's the warm-up sandbox; it's not the shape netcode wants. Refactor to a
-`Peer` abstraction — one peer owns its own `SimRunner`, `GameState`, `History`,
-`GameView`, `InputSampler`, and one `ITransport` endpoint. `Bootstrap` creates **two
-peers** plus one shared `InProcessNetwork`, with peer A bound to `network.EndpointA`,
-peer B to `EndpointB`.
+This is the chunky one (discovery + transport + the peer refactor), but there's **no
+throwaway work** — it's the real shape from here on. Build, in `Tanks.Net` where possible:
 
-- Each peer samples only its assigned player's input (peer A → `SampleP1`,
-  peer B → `SampleP2`) and `Send`s it across its own transport.
-- Neither peer consumes the *other's* input into its sim yet — just log received bytes
-  to confirm the wire is live. Consumption happens in M2.
-- **Cameras:** each peer gets its own `Camera` with
-  `cam.rect = new Rect(0, 0, 0.5f, 1f)` (left half, peer A) or
-  `new Rect(0.5f, 0, 0.5f, 1f)` (right half, peer B). Each peer's `GameView` spawns its
-  objects on a peer-specific Unity layer; that camera's `cullingMask` is restricted to
-  that layer. Without layer separation, both cameras render both peers' objects piled
-  on top of each other.
+**a. Peer refactor (pure driver + thin shell).** Pull the tick loop out of `SimRunner`
+into a pure netcode driver class. `Bootstrap` becomes a composition root that creates
+**one** peer (single full-screen camera — no split-screen, no layers) and injects a
+`PeerContext`. The MonoBehaviour just forwards `Update()`. **Do the `Bootstrap`/`PeerContext`
+wiring _after_ (b)/(c):** its shape is `(what discovery produces) + (what the loop needs)`, so
+build the networking first and let the peer wiring consume its output. `Bootstrap` keeps its
+current couch-coop wiring until then.
 
-Why this isn't throwaway scaffolding: it's the shape M2–M5 want anyway. For M5 you'll
-swap `network.EndpointA` for `new UdpTransport(...)` and **nothing else changes**.
+**b. `UdpTransport : ITransport`** using `System.Net.Sockets`. Bind the game socket to
+**`IPAddress.Any` : gamePort** — you never need to know your own IP; the OS accepts
+packets on any interface, and when you send to the peer it picks your source address. Keep
+`InProcessNetwork` behind the same `ITransport` for tests.
 
-**Acceptance:** two peers, side-by-side cameras, each drives its own tank only. The
-"other" tank is visibly frozen on each half (because the remote input isn't yet
-consumed). Each peer's HUD (or console log) shows it's receiving the peer's input
-bytes across the `InProcessNetwork`.
+**c. Multicast peer discovery + automatic role assignment.** No hardcoded endpoints, no
+hardcoded "who is player 1." On boot, nothing starts until the peer is found.
+
+- All peers join a fixed multicast group `G` on a fixed discovery port `D` (admin-scoped,
+  e.g. `239.255.x.x`, `TTL = 1`, `SO_REUSEADDR`, multicast-loopback on). One uniform code
+  path covers *both* two-instances-on-one-machine and one-instance-on-two-machines —
+  multicast is built for exactly that (loopback delivery to other local processes is part
+  of the model; `SO_REUSEADDR` for multiple listeners is the *intended* pattern, not a
+  hack). This is what mDNS does.
+- Each peer periodically **beacons** to `G:D` carrying **only its game port** (a number) —
+  *not* its IP. The receiver learns the peer's IP from the **packet's source address**
+  (`Receive(ref remoteEP)`), which the OS stamps correctly for whatever path the packet
+  took. So the peer's reachable endpoint = **(observed source IP, advertised game port)**.
+  This dodges the entire "which of my IPs do I advertise?" problem on localhost/LAN/WLAN.
+- **Roles fall out of the network, not a flag.** Assigning distinct roles to two symmetric
+  peers is *leader election* — provably impossible to break symmetry without a unique
+  distinguishing value. Use the value the network already assigns uniquely: the
+  **(IP, port) endpoint**. Rule: the peer with the lexicographically **smaller** endpoint
+  is **player 0**. Both peers learn both endpoints from the handshake and compute the same
+  answer — no coordinator, no hardcoding. (Deterministic, not random; fine since the two
+  slots are symmetric. Want a fair coin-flip instead? Hash the combined endpoints for a
+  seed — still purely network-derived.) The result feeds `PeerContext.LocalPlayer`.
+- **Manual-IP override — optional, defer until a network forces it.** Not part of M1's
+  core. If you ever hit a network that blocks discovery (some guest/public WiFi blocks all
+  P2P — multicast *and* unicast), you can bypass discovery by supplying the peer's
+  `IP:port` directly. Cheapest form is a launch arg / env var (no UI); a debug text field
+  is only a couple of `GUILayout` lines if you want it in-game. It reuses everything else —
+  role assignment still falls out of the two endpoints (yours + the one you supplied), so
+  this doesn't reopen the identity question. Add it only if a real network needs it.
+
+**d. Exchange inputs, don't consume yet.** Each peer samples only its assigned player's
+input and `Send`s it; log received bytes to confirm the wire is live. Consumption is M2,
+so the *remote* tank stays frozen (its slot gets `PlayerInput.None`).
+
+**Acceptance:** launch two instances (Multiplayer Play Mode). With nothing hardcoded, they
+discover each other, agree on which is player 0 vs 1, and connect. Each window drives only
+its own tank (the other is frozen); each logs that it's receiving the peer's input bytes.
+Killing/relaunching one re-discovers cleanly. Then try it on two laptops on the same link —
+same code, no config.
 
 ### M2 — Lockstep (the main lift of phase 1)
 
-Now make each peer's sim *consume* the remote input it's been receiving in M1, and
-step in lockstep with its peer.
+Make each peer's sim *consume* the remote input and step in lockstep.
 
-- Per-player input ring buffer keyed by tick, owned by each peer.
+- Per-player input ring buffer keyed by tick, owned by each peer. **Idempotent insert** —
+  a `(tick, player)` may arrive late, out of order, or duplicated; the value is immutable,
+  so re-inserting is a no-op. Inputs are *never* revised.
 - Choose `INPUT_DELAY` (start at 3 ticks ≈ 50 ms; tune later).
 - Each tick: sample local input, record it at `currentTick + INPUT_DELAY`, and `Send`
-  it. Drain `Network.TryReceive` into the ring.
+  it. Drain `Transport.TryReceive` into the ring.
 - Advance the sim only when **both** players' inputs for `state.Tick + 1` are known.
   Otherwise stall this frame; the view re-renders the last good state.
-- **Hash piggyback (the on-screen desync alarm).** Extend `InputCodec` to also carry the
-  sender's `LastHash` (uint64) for some recent confirmed tick alongside the input. When
-  you receive a peer's hash for tick T, compare to your own hash for T — they MUST
-  match. Flash the HUD red and dump the offending tick if they ever don't.
+- **Hash verification is its own message type.** Send a separate, tagged
+  `HashMessage { tick, hash }` for your latest **confirmed** tick. Inputs and hashes are
+  different concerns — different cadence, different reliability, the hash is a removable
+  debug aid — so they're distinct message types over the same transport, never welded into
+  one format. (Packing several messages into one datagram — *coalescing* — is a separate,
+  transport-level efficiency choice and is fine: a datagram can carry, say, a hash for tick
+  T and inputs for tick N. Unrelated messages sharing a datagram is not the same as welding
+  two message types into one format. Over `InProcessNetwork` it's moot.) On receipt,
+  look up your own stored hash for that tick and compare —
+  flash the HUD red and dump the tick if they ever differ. In lockstep there's no
+  chicken-and-egg: you never tick on a prediction, so **every executed tick is confirmed**
+  and every hash is trustworthy.
 
-**Acceptance — all three layers, no skipping:**
+**Acceptance (all required; write the test whenever fits your session — it does not have
+to come before the implementation):**
 
-1. **Visual.** Both tanks drive when their assigned keys are pressed; bullets bounce;
-   matches end correctly. Both halves of the split-screen look the same (up to a small
-   tick offset under latency — see below).
-2. **Hash agreement.** Each peer's HUD shows its own `LastHash` AND the peer's most
-   recently reported hash. They must match for every confirmed tick. (The piggyback
-   is what surfaces this live.)
-3. **Stress.** With `Network.LatencyTicks = 12, JitterTicks = 3, LossChance = 0.05f`
-   the game stays correct: hashes still match, and lockstep visibly stalls during
-   slow/dropped packets. That perceived input lag is exactly what rollback hides in M3.
+1. **Test gate — required.** A deterministic lockstep test in `SimTests~`: two sims, each
+   generating its own player's inputs from a **seed**, exchanging over `InProcessNetwork`
+   *with latency/jitter/loss*, advancing only when both inputs for a tick are known —
+   stays bit-identical (`A.Hash() == B.Hash()`) every confirmed tick for N ticks. (This
+   tests the **buffering/lockstep plumbing**, not the sim matching itself — an off-by-one
+   in the ring would diverge the two peers. It's the extension of
+   `InputsExchangedOverWireKeepSimsInLockstep`.)
+2. **Visual.** Both tanks drive when their keys are pressed; bullets bounce; matches end
+   correctly. Both windows agree (up to a small tick offset under latency).
+3. **Hash agreement.** Each peer's HUD shows its own latest-confirmed hash AND the peer's;
+   they match every confirmed tick.
+4. **Stress.** With `LatencyTicks = 12, JitterTicks = 3, LossChance = 0.05f` the game stays
+   correct: hashes still match, and lockstep visibly stalls during slow/dropped packets.
+   That perceived input lag is exactly what rollback hides in M3.
 
-Expose `Network`'s latency/jitter/loss fields on the HUD as live sliders so you can
-twiddle them without restarting.
+Expose latency/jitter/loss as live HUD sliders (on `InProcessNetwork` in tests; for the
+UDP path, a local artificial-delay wrapper) so you can twiddle without restarting.
 
 ### M3 — Rollback (the headliner)
 - Stop stalling on missing remote input. **Predict** it ("same as last tick" is a fine
@@ -182,56 +276,65 @@ twiddle them without restarting.
   - Update the history snapshots along the way.
 - Cap the rollback budget (e.g., 12 ticks) — if a misprediction is older than that, the
   connection is too laggy for rollback to hide; fall back to stall.
+- **Rollback is local.** A misprediction corrects *your own* sim from inputs you already
+  received; you send nothing back. The peer independently rolls back using *your* inputs.
+- **Hash verification under prediction.** Now the *current* tick's hash is computed from
+  guesses and is meaningless to compare — so only ever report/compare the hash of your
+  **latest confirmed** tick (it lags the current tick by the prediction window). That's why
+  `HashMessage` carries a *confirmed* tick, not the bleeding edge.
 
-**Acceptance:** at the same simulated latency as M2, the game feels responsive (you
-move "now", not in 50 ms). Hash still matches every confirmed tick. The HUD shows
-non-zero rollback frames when you crank loss/jitter up.
+**Acceptance (all required; test in any order):**
+
+1. **Test gate — required.** A rollback-recovery test in `SimTests~`: feed a *wrong*
+   predicted remote input for a few ticks, deliver the truth, trigger the rollback, and
+   assert the post-rollback hash **equals a reference run that had the truth from the
+   start**. Proves rollback reconstructs the true timeline.
+2. At the same simulated latency as M2, the game feels responsive (you move "now", not in
+   50 ms). Hash still matches every confirmed tick. The HUD shows non-zero rollback frames
+   when you crank loss/jitter up.
 
 ### M4 — Make it visible (the fun part)
-Suggested overlays — pick what looks coolest:
-- RTT (ping-pong probe; piggyback on input packets, or send a tiny probe).
+Per-process overlays — pick what looks coolest:
+- RTT (ping-pong probe; its own tagged message, optionally coalesced into a datagram you're
+  already sending).
 - Current `INPUT_DELAY` and predicted-ahead distance (`localTick - confirmedTick`).
 - Rollback counter (per-second; max in last N seconds).
 - Frames re-simulated per rollback event (histogram or scrolling text).
 - **Predicted vs confirmed ghost** of the remote tank — render a faint outline at the
   confirmed position while the solid tank is at the predicted position. When you
   mispredict, you see the ghost snap visibly.
-- Latency / jitter / loss knobs as on-screen sliders (already live fields on `Network`).
+- Latency / jitter / loss knobs as on-screen sliders.
 - Hash-divergence alarm: if confirmed hashes ever differ, flash the HUD red and dump
   the offending tick's inputs+states to a file.
 
-### M5 — Real UDP transport (when you want to play across two machines)
-- New `UdpTransport : ITransport` using `System.Net.Sockets.UdpClient` (Sim/Net are
-  pure C# already; no Unity dependency means System.Net Just Works).
-- Swap it in behind `ITransport` — the rest of the code doesn't change. The fake
-  network stays for repro / tests / single-machine dev.
-
 ## High-level pseudocode
 
-Both loops are written from ONE peer's perspective. In the M1 two-peers-in-process
-setup, both peers run their own copy of the loop against opposite ends of
-`InProcessNetwork`.
+Each process runs **one** peer. The loop lives in the pure driver; `SimRunner.Update()`
+just forwards `driver.Advance(Time.deltaTime)`. The transport is `UdpTransport` at runtime,
+`InProcessNetwork` in tests — both behind `ITransport`.
 
 ### Lockstep tick loop (M2)
 
 ```
 INPUT_DELAY = 3  # ticks
 
-each Update():
-  accumulate Time.deltaTime; while >= 1/TICK_RATE:
+each Advance(dt):
+  accumulate dt; while >= 1/TICK_RATE:
     tickToPlay = state.Tick + 1
     inputForFuture = SampleLocal()
     inputs.Record(currentTick + INPUT_DELAY, LocalPlayer, inputForFuture)
-    Send( Encode(currentTick + INPUT_DELAY, LocalPlayer, inputForFuture) )
+    Send( InputMessage(currentTick + INPUT_DELAY, LocalPlayer, inputForFuture) )
+    Send( HashMessage(latestConfirmedTick, HashAt(latestConfirmedTick)) )   # decoupled
 
-    while Network.TryReceive(pkt):
-      (t, who, in) = Decode(pkt)
-      inputs.Record(t, who, in)
+    while Transport.TryReceive(pkt):
+      switch pkt.kind:
+        Input: (t, who, in) = Decode(pkt); inputs.Record(t, who, in)   # idempotent
+        Hash:  (t, h) = Decode(pkt); if HashAt(t) != h: RaiseDesyncAlarm(t)
 
     if inputs.HasBoth(tickToPlay):
       Simulation.Tick(state, arena, inputs.At(tickToPlay))
       history.Record(state)
-      currentTick++
+      currentTick++                       # every executed tick is CONFIRMED here
     else:
       break  # stall this frame; the view re-renders last good state
 ```
@@ -239,116 +342,124 @@ each Update():
 ### Rollback tick loop (M3)
 
 ```
-each Update():
-  accumulate; while >= 1/TICK_RATE:
+each Advance(dt):
+  accumulate dt; while >= 1/TICK_RATE:
     tickToPlay = state.Tick + 1
     localIn = SampleLocal()
     inputs.Record(tickToPlay, LocalPlayer, localIn, confirmed=true)
-    Send( Encode(tickToPlay, LocalPlayer, localIn) )
+    Send( InputMessage(tickToPlay, LocalPlayer, localIn) )
+    Send( HashMessage(latestConfirmedTick, HashAt(latestConfirmedTick)) )
 
     earliestDirty = uint.MaxValue
-    while Network.TryReceive(pkt):
-      (t, who, actual) = Decode(pkt)
-      if inputs.Predicted(t, who) != actual:
-        earliestDirty = min(earliestDirty, t)
-      inputs.Record(t, who, actual, confirmed=true)
+    while Transport.TryReceive(pkt):
+      if pkt.kind == Input:
+        (t, who, actual) = Decode(pkt)
+        if inputs.Predicted(t, who) != actual:
+          earliestDirty = min(earliestDirty, t)
+        inputs.Record(t, who, actual, confirmed=true)
+      elif pkt.kind == Hash:
+        (t, h) = Decode(pkt); if HashAt(t) != h: RaiseDesyncAlarm(t)
 
-    # Predict missing remote inputs (naive: "same as last")
-    inputs.PredictMissingFor(tickToPlay)
+    inputs.PredictMissingFor(tickToPlay)        # naive: "same as last"
 
-    # If we mispredicted, rewind and re-simulate
-    if earliestDirty != uint.MaxValue:
-      state.CopyFrom( history.Get(earliestDirty - 1) )   # confirmed-good snapshot
+    if earliestDirty != uint.MaxValue:          # mispredicted → rewind & re-sim (LOCAL only)
+      state.CopyFrom( history.Get(earliestDirty - 1) )
       for t in earliestDirty .. tickToPlay - 1:
         Simulation.Tick(state, arena, inputs.At(t))
-        history.Record(state)
+        history.Record(state)                   # new states overwrite old
 
-    # Advance one new tick using local + predicted remote
-    Simulation.Tick(state, arena, inputs.At(tickToPlay))
+    Simulation.Tick(state, arena, inputs.At(tickToPlay))   # advance with local + predicted
     history.Record(state)
     currentTick++
 ```
 
-This is rough — flesh out the bookkeeping (per-player rings, "predicted vs confirmed"
-flag per slot, prediction policy) as you go. Keep `Tick` and `Hash` untouched.
+This is rough — flesh out the bookkeeping (per-player rings, "predicted vs confirmed" flag
+per slot, latest-confirmed-tick tracking, prediction policy) as you go. Keep `Tick` and
+`Hash` untouched.
 
 ## Gotchas and tips
 
-- **Allocation discipline matters under rollback.** A misprediction re-runs many
-  `Tick`s; if each allocates, GC spikes. `Tick` itself is allocation-free as written.
-  Use `GameState.CopyFrom(snapshot)` (not `state = snapshot.Clone()`) when restoring.
-  The `History` already reuses its slots — keep it that way.
-- **Floats vs Fixed at the boundary.** Floats are fine for *rendering* (`GameView`
-  converts `Fixed.ToFloat()`). They are NOT fine in `Simulation` or anything that
-  feeds back into state. Easy to slip; review diffs for this.
-- **Don't fix non-determinism by adding a clamp.** If `DeterminismTests` fail, the bug
-  is real and will bite you later. Find the root cause.
-- **Use the fake network knobs.** Develop with `LatencyTicks: 6, JitterTicks: 3,
-  LossChance: 0.05f` — close enough to "real-ish" to catch bugs the clean path hides.
-- **Tick number sanity.** `state.Tick` is the tick of the *current* state. The "next"
-  tick to play is `state.Tick + 1`. The input you sample at frame F is for some future
-  tick (with input delay) or for `state.Tick + 1` (rollback). Pick a convention and
-  comment it; the off-by-ones will eat hours otherwise.
-- **Prediction policy.** "Same as last tick" is the standard starting policy and is
-  surprisingly good. Tank inputs are held buttons (Forward/Left/...) so consecutive
-  ticks usually match. Improving the predictor is a knob to tune later, not now.
-- **Order of operations under rollback matters.** Make sure when you re-simulate
-  `t..currentTick`, the *new* states overwrite the *old* in history, so future rollbacks
-  use the correct base.
+- **Threading boundary at the UDP edge.** A real `UdpClient` receive may land on a
+  **background thread**. Don't make the sim thread-safe — confine threading to the socket:
+  the receive thread enqueues bytes into a `ConcurrentQueue`, and `Advance()` **drains it on
+  the main thread**. The sim stays single-threaded and lock-free (which also helps
+  determinism). The in-process transport has no threads, so this only matters for
+  `UdpTransport`. (You can also do non-blocking polling receives entirely on the main
+  thread and skip threads altogether.)
+- **You never need your own IP.** Bind game receive to `IPAddress.Any:gamePort`; send to the
+  peer's endpoint and let the OS pick your source. Advertise only your *port*; the peer
+  reads your *IP* from the packet source. Works identically on localhost/LAN/WLAN.
+- **Inputs are immutable; predictions are not.** A peer never sends a revised input for a
+  past tick. Rollback corrects your *local prediction* of their input, locally. So design
+  for "late/duplicate/out-of-order arrival," never for "the value changed."
+- **Hash only confirmed ticks.** Lockstep: every executed tick is confirmed (no
+  prediction). Rollback: report the latest *confirmed* tick, which lags the current tick.
+- **Allocation discipline under rollback.** A misprediction re-runs many `Tick`s; if each
+  allocates, GC spikes. `Tick` is allocation-free; use `GameState.CopyFrom(snapshot)` (not
+  `state = snapshot.Clone()`) when restoring. `History` reuses slots — keep it that way.
+  (Also: make sure `CopyFrom` is a real deep copy, or a stored snapshot aliases live state.)
+- **Floats vs Fixed at the boundary.** Floats are fine for *rendering* (`GameView` converts
+  `Fixed.ToFloat()`) and for *local input sampling before quantizing*. They are NOT fine in
+  `Simulation` or anything that feeds back into state or crosses the wire.
+- **Don't fix non-determinism by adding a clamp.** If `DeterminismTests` fail, the bug is
+  real and will bite you later. Find the root cause.
+- **Tick number sanity.** `state.Tick` is the tick of the *current* state; the "next" tick
+  is `state.Tick + 1`. The input you sample is for a future tick (with input delay) or for
+  `state.Tick + 1` (rollback). Pick a convention and comment it; off-by-ones eat hours.
+- **Prediction policy.** "Same as last tick" is the standard start and is surprisingly good
+  — tank inputs are held buttons, so consecutive ticks usually match. Tune later.
+- **Order of operations under rollback.** When you re-simulate `t..currentTick`, the *new*
+  states must overwrite the *old* in history, so future rollbacks use the correct base.
 
 ## Testing
 
-- **`dotnet test "SimTests~/SimTests.csproj"`** — fast, no Unity, run after every change
-  to Sim/Net (or anything that links into them). Adding tests as you go is encouraged:
-  - A "lockstep through fake network with latency" test would be a nice extension of
-    `InputsExchangedOverWireKeepSimsInLockstep` — same loop, but `latencyTicks: 6`
-    and only advance the sim once both inputs for a tick are known.
-  - A "rollback recovers from misprediction" test: lie about the remote input for a
-    few ticks, then deliver the truth, then verify the corrected sim's hash matches a
-    reference run that had truth all along.
-- **In Unity (M1–M4):** the two-peers-in-one-process setup from M1 is your primary
-  runtime validation for everything up through rollback + visualization. Both peers
-  live in one editor process talking over `InProcessNetwork` — you see both halves of
-  the split-screen at once, and both peers' HUDs (hashes, ticks, rollback counts) are
-  right there to compare.
-- **In Unity (M5+, separate processes):** install **Multiplayer Play Mode**
-  (Window → Package Manager → `com.unity.multiplayer.playmode`). It spawns up to 4
-  virtual-player processes that share the project but run independently — they'll talk
-  over UDP loopback once `UdpTransport` exists. Validates the real transport path
-  without needing a second machine. You'll need a way to tell each instance which
-  player it is (commandline arg, environment var, or an MPPM tag).
-- **Cross-machine (M5+):** Build And Run on two machines and pass each `--player 0/1`
-  plus an IP. Or run a build alongside the editor on the same box with `127.0.0.1`
-  and two ports.
+- **`dotnet test "SimTests~/SimTests.csproj"`** — fast, no Unity, run after every change to
+  Sim/Net. This is where the **required** lockstep and rollback test gates live (see M2/M3).
+  It's also the reproducible, single-debugger home for chasing any desync you see live —
+  reproduce it here against `InProcessNetwork` with a fixed seed, then fix it.
+- **Primary dev loop: Multiplayer Play Mode** (Window → Package Manager →
+  `com.unity.multiplayer.playmode`). Spawns virtual-player processes that share the project
+  and run independently — fast edit/reload across all instances, no separate build step.
+  This is the everyday loop for M1–M4. (With discovery in place, instances self-pair; no
+  per-instance config needed.)
+- **Optional validation: build alongside the editor.** Strictly optional. Run a standalone
+  **build** (IL2CPP) next to the editor (Mono) on the same machine. Because the two sides
+  run *different runtimes*, matching hashes are a free **cross-runtime determinism check**
+  (Mono vs IL2CPP) and validate the real player runtime. Use it occasionally, not daily.
+- **Cross-machine:** with discovery, just run a build on each of two laptops on the same
+  link — they find each other. (Direct ethernet is the most reliable; normal WiFi is fine;
+  locked-down guest WiFi may block P2P entirely — use the manual-IP fallback or another
+  network.)
 
 ## What's deferred to phase 2 (authoritative server)
 
 A short preview, so the choices today make sense:
 
-- One process acts as the **authoritative server** (could be a third process or one of
-  the peers serving as host). It runs the same `Simulation` we have now.
+- One process acts as the **authoritative server** (a third process, or one peer hosting).
+  It runs the same `Simulation` we have now.
 - Clients sample local input, send it to the server, and **predict** locally by ticking
-  their own copy of the sim with their input + a guess at the remote input
-  (or just the local input + "everyone else stays the same"). This is the same
-  predict-and-tick we built in M3.
-- Server periodically sends authoritative **snapshots** (state at tick T, plus the
-  inputs it applied). Clients **reconcile**: `state.CopyFrom(snapshot)`, then replay
-  unacknowledged local inputs forward to "now". Same `CopyFrom`-and-replay machinery.
-- Remote players are typically **interpolated** from snapshots (lag-buffer for a tick
-  or two) rather than predicted from inputs, since you don't have their inputs.
-- The same `Hash()` desync canary works: client's post-reconciliation hash for tick T
-  must equal server's hash for tick T. If not, your prediction has a bug.
+  their own copy of the sim with their input + a guess at the remote input. This is the
+  same predict-and-tick we built in M3.
+- Server periodically sends authoritative **snapshots** (state at tick T, plus the inputs
+  it applied). Clients **reconcile**: `state.CopyFrom(snapshot)`, then replay unacknowledged
+  local inputs forward to "now". Same `CopyFrom`-and-replay machinery.
+- Remote players are typically **interpolated** from snapshots rather than predicted from
+  inputs, since you don't have their inputs.
+- The same `Hash()` desync canary works: client's post-reconciliation hash for tick T must
+  equal the server's hash for tick T. If not, your prediction has a bug.
 
-So phase 2 reuses: `Simulation.Tick`, `GameState.Clone`/`CopyFrom`, `History`,
-`InputCodec` (you'll add a `SnapshotCodec`), and `ITransport`. New work is the server
-process and the snapshot/reconciliation/interpolation loop.
+So phase 2 reuses: `Simulation.Tick`, `GameState.Clone`/`CopyFrom`, `History`, `InputCodec`
+(you'll add a `SnapshotCodec`), `ITransport`, and the tagged-message envelope. New work is
+the server process and the snapshot/reconciliation/interpolation loop.
 
 ## First 30 minutes of the session
 
 1. Both: read this file. (~10 min)
 2. Both: skim `CLAUDE.md` and `Assets/Tanks/Sim/Simulation.cs` + `SimRunner.cs`. (~10 min)
 3. Run `dotnet test` from the repo root — confirm 23/23. (~1 min)
-4. Open in Unity, press Play, drive the tanks a few seconds. (~2 min)
-5. Open `SimRunner.cs` to the `===== NETCODE SEAM =====` block. Start on M1.
+4. Open in Unity, press Play, drive the tanks a few seconds (current couch-coop sandbox). (~2 min)
+5. Read `InputsExchangedOverWireKeepSimsInLockstep` — it's the M2 test gate in miniature.
+6. Open `SimRunner.cs` to the `===== NETCODE SEAM =====` block. Start on M1 (the pure-driver
+   refactor first, then transport, then discovery).
 
 Good luck. Have fun with the rollback frames.

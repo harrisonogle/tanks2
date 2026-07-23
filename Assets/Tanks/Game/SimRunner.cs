@@ -5,89 +5,43 @@ using UnityEngine;
 namespace Tanks.Game
 {
     /// <summary>
-    /// Drives the deterministic simulation at a fixed tick rate, independent of frame rate.
-    /// Holds the live <see cref="GameState"/>, a rollback-ready history buffer, and the
-    /// (not-yet-wired) network seam.
-    ///
-    /// Today it samples BOTH players locally — a couch-coop sandbox to prove the sim is fun
-    /// and correct. The netcode work in your session replaces the marked seam below.
+    /// Represents a single match between peers.
     /// </summary>
     public sealed class SimRunner : MonoBehaviour
     {
-        public int TickRate = SimConfig.TickRate;
+        // A match is in progress iff this is not null
+        // Transition from null to non-null effectively starts the match
+        private SimDriver? _driver;
 
-        public GameState State { get; private set; }
-        public Arena Arena { get; private set; }
-        public ulong LastHash { get; private set; }
-        public StateHistory History { get; private set; }
+        /// <summary>Injected by Bootstrap immediately after AddComponent, before the first Update.</summary>
+        public SimDriver Driver { set => _driver = value; }
 
-        // ===================== NETCODE SEAM (wire up during the session) =====================
-        // The fake network is created and ready. It is NOT yet driving the simulation.
-        //
-        // To go online you'll:
-        //   1. Sample only the LOCAL player here; send that PlayerInput over Network (InputCodec).
-        //   2. Receive the remote player's input; buffer inputs by tick.
-        //   3. LOCKSTEP: advance the sim only when both players' inputs for a tick are known
-        //      (with a small input delay). Drive Network.Poll(tick) each tick.
-        //   4. ROLLBACK: predict the missing remote input, Tick immediately, and when the real
-        //      input arrives and differs, restore History.Get(t) and re-Tick forward to now.
-        public InProcessNetwork Network { get; private set; }
-        // =====================================================================================
-
-        private readonly PlayerInput[] _inputs = new PlayerInput[SimConfig.PlayerCount];
-        private double _accumulator;
-
-        private const int HistoryCapacity = 256;
-        private const int MaxStepsPerFrame = 5; // clamp to avoid a death spiral after a hitch
-
-        private void Awake()
+        public void StartMatch(SimDriver driver)
         {
-            Arena = Arena.CreateDefault();
-            Network = new InProcessNetwork(); // ready for the session; harmless while unused
-            History = new StateHistory(HistoryCapacity);
-            ResetMatch();
+            if (_driver is not null)
+            {
+                Debug.Log("Match already in progress.");
+                return;
+            }
+
+            Debug.Log("Starting match.");
+            _driver = driver;
         }
+
+        // Read-only surface consumed by GameView / DebugHud.
+        public GameState? State => _driver?.State;
+        public Arena? Arena => _driver?.Arena;
+        public SimConfig? Config => _driver?.Config;
+        public ulong LastHash => _driver?.LastHash ?? 0UL;
 
         private void Update()
         {
+            if (_driver == null) return;
+
             if (InputSampler.IsResetRequested())
-                ResetMatch();
+                _driver.ResetMatch();
 
-            double step = 1.0 / TickRate;
-            _accumulator += Time.deltaTime;
-
-            int steps = 0;
-            while (_accumulator >= step && steps < MaxStepsPerFrame)
-            {
-                StepOnce();
-                _accumulator -= step;
-                steps++;
-            }
+            _driver.Advance(Time.deltaTime);
         }
-
-        private void StepOnce()
-        {
-            // LOCAL sandbox: both players sampled on this machine.
-            _inputs[0] = InputSampler.SampleP1();
-            _inputs[1] = InputSampler.SampleP2();
-
-            Simulation.Tick(State, Arena, _inputs);
-
-            LastHash = State.Hash();
-            History.Record(State);
-        }
-
-        public void ResetMatch()
-        {
-            State = GameState.CreateInitial();
-            InputSampler.Reset();   // realign stored turret angles with the new spawn orientations
-            LastHash = State.Hash();
-            History.Clear();
-            History.Record(State);
-            _accumulator = 0;
-        }
-
-        /// <summary>The input most recently applied for a player (for the HUD).</summary>
-        public PlayerInput InputOf(int player) => _inputs[player];
     }
 }

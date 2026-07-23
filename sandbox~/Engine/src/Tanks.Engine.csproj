@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Tanks.Engine</AssemblyName>
+    <RootNamespace>Tanks.Engine</RootNamespace>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+    <DefineConstants>$(DefineConstants);NOT_UNITY</DefineConstants>
+    <NoWarn>$(NoWarn);CS0164</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Discovery\src\Tanks.Discovery.csproj" />
+    <ProjectReference Include="..\..\Net\src\Tanks.Net.csproj" />
+    <ProjectReference Include="..\..\Protocol\src\Tanks.Protocol.csproj" />
+    <ProjectReference Include="..\..\Sim\src\Tanks.Sim.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\Assets\Tanks\Engine\**\*.cs">
+      <Link>Net\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>

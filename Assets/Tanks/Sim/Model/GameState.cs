@@ -1,0 +1,157 @@
+using System;
+using System.Diagnostics;
+
+namespace Tanks.Sim;
+
+/// <summary>
+/// The complete, authoritative state of the match at one tick. This is the only thing
+/// the simulation reads/writes. Because it is fully self-contained and cheaply cloneable,
+/// rollback is just "keep old copies and re-run <see cref="Simulation.Tick"/>".
+/// </summary>
+public sealed unsafe class GameState
+{
+    public uint Tick;
+    public uint Rng;            // deterministic xorshift seed (reserved for future use; hashed for safety)
+    public Tank[] Tanks;        // length config.PlayerCount
+    public Bullet[] Bullets;    // length config.MaxBullets
+
+    // All construction goes through here, so the arrays are never null. Private on purpose —
+    // build via CreateInitial / Clone; you can't `new GameState()` into an invalid (unsized) state.
+    private GameState(int tankCount, int bulletCount)
+    {
+        Tanks = new Tank[tankCount];
+        Bullets = new Bullet[bulletCount];
+    }
+
+    public static GameState CreateInitial(SimConfig config, uint seed = 0x1234_5678u)
+    {
+        var s = new GameState(config.PlayerCount, config.MaxBullets)
+        {
+            Tick = 0,
+            Rng = seed == 0 ? 1u : seed,
+        };
+
+        for (int i = 0; i < config.PlayerCount; i++)
+        {
+            var spawn = config.SpawnPosition(i);
+            int angle = config.SpawnAngle(i);
+            s.Tanks[i] = new Tank
+            {
+                X = spawn.X,
+                Y = spawn.Y,
+                Angle = angle,
+                TurretAngle = angle,   // turret starts aligned with body facing
+                Health = config.TankMaxHealth,
+                FireCooldown = 0,
+                DashTicks = 0,
+                DashCooldown = 0,
+            };
+        }
+        return s;
+    }
+
+    /// <summary>Deep copy. Used to snapshot states for the rollback ring buffer.</summary>
+    public GameState Clone()
+    {
+        var c = new GameState(Tanks.Length, Bullets.Length)
+        {
+            Tick = Tick,
+            Rng = Rng,
+        };
+        Array.Copy(Tanks, c.Tanks, Tanks.Length);
+        Array.Copy(Bullets, c.Bullets, Bullets.Length);
+        return c;
+    }
+
+    /// <summary>Copy another state's contents into this one without allocating (for pooling later).</summary>
+    public void CopyFrom(GameState other)
+    {
+        Tick = other.Tick;
+        Rng = other.Rng;
+        Array.Copy(other.Tanks, Tanks, Tanks.Length);
+        Array.Copy(other.Bullets, Bullets, Bullets.Length);
+    }
+
+    public int CountAlive()
+    {
+        int n = 0;
+        for (int i = 0; i < Tanks.Length; i++)
+            if (Tanks[i].Alive) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Deterministic 64-bit fingerprint of the full state. If two machines disagree on
+    /// this for the same tick, the simulation has diverged — the single most important
+    /// signal when debugging rollback. The debug HUD shows the low bits live.
+    /// </summary>
+    public ulong Hash()
+    {
+        ulong h = 14695981039346656037UL; // FNV offset basis
+        h = Mix(h, (int)Tick);
+        h = Mix(h, (int)Rng);
+        for (int i = 0; i < Tanks.Length; i++)
+        {
+            ref readonly Tank t = ref Tanks[i];
+            h = Mix(h, t.X.Raw);
+            h = Mix(h, t.Y.Raw);
+            h = Mix(h, t.Angle);
+            h = Mix(h, t.TurretAngle);
+            h = Mix(h, t.Health);
+            h = Mix(h, t.FireCooldown);
+            h = Mix(h, t.DashTicks);
+            h = Mix(h, t.DashCooldown);
+        }
+        for (int i = 0; i < Bullets.Length; i++)
+        {
+            ref readonly Bullet b = ref Bullets[i];
+            h = Mix(h, b.Active ? 1 : 0);
+            if (!b.Active) continue; // inactive slots have no meaningful payload
+            h = Mix(h, b.X.Raw);
+            h = Mix(h, b.Y.Raw);
+            h = Mix(h, b.VX.Raw);
+            h = Mix(h, b.VY.Raw);
+            h = Mix(h, b.Owner);
+            h = Mix(h, b.BouncesLeft);
+            h = Mix(h, b.Life);
+        }
+        return h;
+    }
+
+    public int GetByteCount() => sizeof(GameStateHeader) + Tanks.Length * sizeof(Tank) + Bullets.Length * sizeof(Bullet);
+
+    public bool TrySerialize(byte* buffer, int length, out int bytesWritten)
+    {
+        if (length < GetByteCount())
+        {
+            bytesWritten = 0;
+            return false;
+        }
+        byte* cursor = buffer;
+        var header = (GameStateHeader*)cursor;
+        header->Tick = Tick;
+        header->Rng = Rng;
+        header->TankCount = (uint)Tanks.Length;
+        header->BulletCount = (uint)Bullets.Length;
+        cursor += sizeof(GameStateHeader);
+        var tanks = new Span<Tank>((Tank*)cursor, Tanks.Length);
+        new ReadOnlySpan<Tank>(Tanks).CopyTo(tanks);
+        cursor += sizeof(Tank) * Tanks.Length;
+        var bullets = new Span<Bullet>((Bullet*)cursor, Bullets.Length);
+        new ReadOnlySpan<Bullet>(Bullets).CopyTo(bullets);
+        cursor += sizeof(Bullet) * Bullets.Length;
+        bytesWritten = (int)(cursor - buffer);
+        Debug.Assert(bytesWritten == GetByteCount());
+        return true;
+    }
+
+    private static ulong Mix(ulong h, int value)
+    {
+        unchecked
+        {
+            h ^= (uint)value;
+            h *= 1099511628211UL; // FNV prime
+        }
+        return h;
+    }
+}

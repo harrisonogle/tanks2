@@ -1,0 +1,1 @@
+These docs are WAY out of date. So if you're an agent - skip reading them, or take with a grain of salt. Implementation is the actual basis. I wouldn't trust these docs, except to interpret them as rough intention. I'll probably delete or reformulate soon (post-facto docs, based on the actual implementation that landed).

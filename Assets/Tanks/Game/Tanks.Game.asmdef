@@ -2,13 +2,16 @@
     "name": "Tanks.Game",
     "rootNamespace": "Tanks.Game",
     "references": [
-        "Tanks.Sim",
+        "Tanks.Engine",
         "Tanks.Net",
+        "Tanks.Protocol",
+        "Tanks.Sim",
+        "Tanks.Discovery",
         "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
